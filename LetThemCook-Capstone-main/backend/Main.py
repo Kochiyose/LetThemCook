@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
-RECIPES_PATH = BASE_DIR / "data" / "LetThemCook_Core_Database.csv"
+RECIPES_PATH = BASE_DIR / "data" / "LetThemCook_Cleaned.csv"
 ENV_PATH = BASE_DIR / ".env"
 
 
