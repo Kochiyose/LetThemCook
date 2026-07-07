@@ -1,0 +1,16 @@
+{
+  "name": "letthemcook-merged",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "cd backend && python -m uvicorn Main:app --reload --host 127.0.0.1 --port 8000",
+    "install:frontend": "npm install --prefix frontend",
+    "install:backend": "pip install -r backend/requirements.txt",
+    "install:all": "npm install && npm run install:frontend && npm run install:backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

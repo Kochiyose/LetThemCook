@@ -1,0 +1,21 @@
+# Node/Frontend
+node_modules/
+dist/
+frontend/dist/
+
+# Environment files
+.env
+.env.local
+frontend/.env
+backend/.env
+
+# Python/Backend
+__pycache__/
+*.pyc
+chroma_db/
+venv/
+.venv/
+
+# OS/editor
+.DS_Store
+.vscode/
