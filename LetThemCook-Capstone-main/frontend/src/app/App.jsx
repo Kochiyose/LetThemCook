@@ -775,11 +775,10 @@ export default function App() {
               <div className="flex items-start gap-3">
                 {/* Rank number */}
                 <span
-                  className="text-3xl font-bold leading-none flex-shrink-0 w-8 transition-colors text-stone-200 group-hover:text-primary/20"
-                  style={{ fontFamily: "'Lora', serif" }}
-                >
-                  {idx + 1}
-                </span>
+                className="text-3xl font-bold leading-none flex-shrink-0 w-12 text-right transition-colors text-stone-200 group-hover:text-primary/20"
+                 style={{ fontFamily: "'Lora', serif" }}>
+                   {idx + 1}
+                 </span>
 
                 <div className="flex-1 min-w-0">
                   <p
