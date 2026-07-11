@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from chroma_store import RecipeVectorStore
 
 BASE_DIR = Path(__file__).resolve().parent
-RECIPES_PATH = BASE_DIR / "data" / "LetThemCook_Core_Database.csv"
+RECIPES_PATH = BASE_DIR / "data" / "LetThemCook_Cleaned.csv"
 ENV_PATH = BASE_DIR / ".env"
 
 
