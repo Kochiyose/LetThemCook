@@ -15,14 +15,78 @@ const normalize = (value) =>
     .replace(/[^a-z0-9 ]+/g, " ")
     .trim();
 
+/**
+ * Builds the matched/missing/score/tier info the UI cards and modal rely on.
+ * Unlike the backend, this checks the recipe's FULL ingredient list — not
+ * just the first 6 "core" ones — so a searched ingredient (e.g. egg) shows
+ * up as matched even if it's the 7th+ ingredient in the recipe. Recipes
+ * that don't contain any searched ingredient are dropped entirely.
+ */
+function applyPantryMatch(recipe, pantryTerms) {
+  const allIngredients = recipe.allIngredients || [];
+
+  const hasMatch = (ingredient) => {
+    const key = normalize(ingredient);
+    return pantryTerms.some((term) => key.includes(term) || term.includes(key));
+  };
+
+  if (pantryTerms.length === 0) {
+    const core = recipe.coreIngredients && recipe.coreIngredients.length
+      ? recipe.coreIngredients
+      : allIngredients.slice(0, 6);
+    return { ...recipe, matched: [], missing: [], score: 0, tier: 3, coreIngredients: core, availLines: [], missingLines: allIngredients };
+  }
+
+  const matchedFull = allIngredients.filter(hasMatch);
+  const others = allIngredients.filter((ingredient) => !matchedFull.includes(ingredient));
+  // Show matched ingredients first, then fill up to 6 total with the rest,
+  // so the "X/Y" badge and "Still need" list reflect reality.
+  const displayCore = [...matchedFull, ...others].slice(0, Math.max(6, matchedFull.length));
+
+  const matched = displayCore.filter(hasMatch);
+  const missing = displayCore.filter((ingredient) => !hasMatch(ingredient));
+  const score = matched.length / (displayCore.length || 1);
+  const tier = missing.length === 0 ? 1 : missing.length <= 1 ? 2 : 3;
+
+  const availLines = allIngredients.filter(hasMatch);
+  const missingLines = allIngredients.filter((ingredient) => !hasMatch(ingredient));
+
+  return {
+    ...recipe,
+    matched,
+    missing,
+    score,
+    tier,
+    coreIngredients: displayCore,
+    availLines,
+    missingLines,
+  };
+}
+
+/**
+ * Strict ingredient filter + rescoring. Keeps only recipes that actually
+ * contain at least one searched ingredient, then rebuilds the match info
+ * for each so the UI badges are accurate. Runs entirely on the frontend
+ * so it applies no matter where the recipe list came from (backend API or
+ * the local mock fallback).
+ */
 function filterByPantry(recipes, pantry) {
   const pantryTerms = (pantry || []).map(normalize).filter(Boolean);
   if (pantryTerms.length === 0) return recipes;
 
-  return recipes.filter((recipe) => {
-    const haystack = (recipe.allIngredients || []).map(normalize).join(" ");
-    return pantryTerms.some((term) => haystack.includes(term));
-  });
+  return recipes
+    .filter((recipe) => {
+      const haystack = (recipe.allIngredients || []).map(normalize).join(" ");
+      return pantryTerms.some((term) => haystack.includes(term));
+    })
+    .map((recipe) => applyPantryMatch(recipe, pantryTerms))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.missing.length - b.missing.length ||
+        (a.timeMinutes || 999) - (b.timeMinutes || 999) ||
+        a.name.localeCompare(b.name)
+    );
 }
 
 async function requestJson(path, options = {}) {
@@ -95,48 +159,12 @@ function mockSearch(pantry, mealFilter = "All", nameQuery = "") {
     ? byMeal.filter((recipe) => normalize(recipe.name).includes(query))
     : byMeal;
 
-const pantryTerms = pantry.map(normalize).filter(Boolean);
-  const matchingOnly = filterByPantry(byName, pantry);
-  const results = matchingOnly.map((recipe) => rankRecipe(recipe, pantryTerms));
+  const pantryTerms = pantry.map(normalize).filter(Boolean);
 
   if (pantryTerms.length > 0) {
-    return results.sort(
-      (a, b) =>
-        b.score - a.score ||
-        a.missing.length - b.missing.length ||
-        (a.timeMinutes || 999) - (b.timeMinutes || 999) ||
-        a.name.localeCompare(b.name)
-    );
+    return filterByPantry(byName, pantry);
   }
 
+  const results = byName.map((recipe) => applyPantryMatch(recipe, []));
   return results.sort((a, b) => a.mealType.localeCompare(b.mealType) || a.name.localeCompare(b.name));
-}
-
-function rankRecipe(recipe, pantryTerms) {
-  const core = recipe.coreIngredients || [];
-
-  const hasMatch = (ingredient) => {
-    const key = normalize(ingredient);
-    return pantryTerms.some((item) => key.includes(item) || item.includes(key));
-  };
-
-  const matched = pantryTerms.length > 0 ? core.filter(hasMatch) : [];
-  const missing = pantryTerms.length > 0 ? core.filter((ingredient) => !hasMatch(ingredient)) : [];
-  const score = pantryTerms.length > 0 ? matched.length / (core.length || 1) : 0;
-  const tier = pantryTerms.length > 0 && missing.length === 0 ? 1 : pantryTerms.length > 0 && missing.length <= 1 ? 2 : 3;
-
-  const availLines = (recipe.allIngredients || []).filter((line) =>
-    matched.some((ingredient) => normalize(line).includes(normalize(ingredient)))
-  );
-  const missingLines = (recipe.allIngredients || []).filter((line) => !availLines.includes(line));
-
-  return {
-    ...recipe,
-    matched,
-    missing,
-    score,
-    tier,
-    availLines,
-    missingLines,
-  };
 }
