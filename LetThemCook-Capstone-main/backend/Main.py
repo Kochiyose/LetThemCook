@@ -19,8 +19,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from chroma_store import RecipeVectorStore
+
 BASE_DIR = Path(__file__).resolve().parent
-RECIPES_PATH = BASE_DIR / "data" / "LetThemCook_Cleaned.csv"
+RECIPES_PATH = BASE_DIR / "data" / "LetThemCook_Core_Database.csv"
 ENV_PATH = BASE_DIR / ".env"
 
 
@@ -209,6 +211,8 @@ def load_recipes() -> list[dict[str, Any]]:
 
 
 RECIPES = load_recipes()
+RECIPE_BY_ID = {recipe["id"]: recipe for recipe in RECIPES}
+VECTOR_STORE = RecipeVectorStore(BASE_DIR)
 
 
 def parse_minutes(value: Any) -> int:
@@ -256,14 +260,25 @@ def search_recipe_database(
     name_query: str = "",
     max_time_minutes: int | None = None,
 ) -> list[dict[str, Any]]:
-    recipes = RECIPES
+    candidate_ids = (
+        VECTOR_STORE.search_ids(
+            pantry=pantry,
+            meal_filter=meal_filter,
+            name_query=name_query,
+            max_time_minutes=max_time_minutes,
+        )
+        if pantry or name_query.strip()
+        else []
+    )
+
+    recipes = (
+        [RECIPE_BY_ID[recipe_id] for recipe_id in candidate_ids if recipe_id in RECIPE_BY_ID]
+        if candidate_ids
+        else RECIPES
+    )
 
     if meal_filter != "All":
         recipes = [recipe for recipe in recipes if recipe.get("mealType") == meal_filter]
-
-    trimmed_query = normalize(name_query)
-    if trimmed_query:
-        recipes = [recipe for recipe in recipes if trimmed_query in normalize(recipe.get("name", ""))]
 
     if max_time_minutes is not None:
         recipes = [recipe for recipe in recipes if recipe.get("timeMinutes", 999) <= max_time_minutes]
@@ -271,9 +286,6 @@ def search_recipe_database(
     ranked = [recipe_matches(recipe, pantry) for recipe in recipes]
 
     if pantry:
-        # Prioritize recipes that match more of the user's actual ingredients.
-        # Example: "eggs and butter" should rank recipes containing BOTH above
-        # recipes that contain only butter but have fewer total core ingredients.
         ranked.sort(
             key=lambda item: (
                 -len(item.get("matched", [])),
@@ -283,7 +295,7 @@ def search_recipe_database(
                 item.get("name", ""),
             )
         )
-    else:
+    elif not name_query.strip():
         ranked.sort(key=lambda item: (item.get("mealType", ""), item.get("name", "")))
 
     return ranked
@@ -632,6 +644,10 @@ def health() -> dict[str, Any]:
         "ollama_enabled": USE_OLLAMA,
         "ollama_model": OLLAMA_MODEL,
         "focus_mode": "LetThemCook dataset + cooking only",
+        "vector_database": "ChromaDB",
+        "chroma_records": VECTOR_STORE.count(),
+        "chroma_ready": VECTOR_STORE.count() == len(RECIPES),
+        "embedding_model": VECTOR_STORE.embedding_model,
     }
 
 
