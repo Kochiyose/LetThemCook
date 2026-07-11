@@ -15,6 +15,16 @@ const normalize = (value) =>
     .replace(/[^a-z0-9 ]+/g, " ")
     .trim();
 
+function filterByPantry(recipes, pantry) {
+  const pantryTerms = (pantry || []).map(normalize).filter(Boolean);
+  if (pantryTerms.length === 0) return recipes;
+
+  return recipes.filter((recipe) => {
+    const haystack = (recipe.allIngredients || []).map(normalize).join(" ");
+    return pantryTerms.some((term) => haystack.includes(term));
+  });
+}
+
 async function requestJson(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -42,7 +52,8 @@ export async function searchRecipes(pantry, mealFilter, nameQuery) {
       body: JSON.stringify({ pantry, mealFilter, nameQuery }),
     });
 
-    return Array.isArray(data) ? data : data.results || [];
+    const results = Array.isArray(data) ? data : data.results || [];
+    return filterByPantry(results, pantry);
   } catch (error) {
     console.warn("Using local mock recipe database because backend is unavailable:", error);
     return mockSearch(pantry, mealFilter, nameQuery);
@@ -84,8 +95,9 @@ function mockSearch(pantry, mealFilter = "All", nameQuery = "") {
     ? byMeal.filter((recipe) => normalize(recipe.name).includes(query))
     : byMeal;
 
-  const pantryTerms = pantry.map(normalize).filter(Boolean);
-  const results = byName.map((recipe) => rankRecipe(recipe, pantryTerms));
+const pantryTerms = pantry.map(normalize).filter(Boolean);
+  const matchingOnly = filterByPantry(byName, pantry);
+  const results = matchingOnly.map((recipe) => rankRecipe(recipe, pantryTerms));
 
   if (pantryTerms.length > 0) {
     return results.sort(
