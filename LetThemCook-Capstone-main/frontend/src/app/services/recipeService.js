@@ -63,6 +63,12 @@ function applyPantryMatch(recipe, pantryTerms) {
   };
 }
 
+
+function filterByName(recipes, nameQuery) {
+  const query = normalize(nameQuery);
+  if (!query) return recipes;
+  return recipes.filter((recipe) => normalize(recipe.name).includes(query));
+}
 /**
  * Strict ingredient filter + rescoring. Keeps only recipes that actually
  * contain at least one searched ingredient, then rebuilds the match info
@@ -117,7 +123,8 @@ export async function searchRecipes(pantry, mealFilter, nameQuery) {
     });
 
     const results = Array.isArray(data) ? data : data.results || [];
-    return filterByPantry(results, pantry);
+    const named = filterByName(results, nameQuery);
+    return filterByPantry(named, pantry);
   } catch (error) {
     console.warn("Using local mock recipe database because backend is unavailable:", error);
     return mockSearch(pantry, mealFilter, nameQuery);
