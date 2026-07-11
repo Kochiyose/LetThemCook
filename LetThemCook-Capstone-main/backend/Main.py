@@ -44,10 +44,10 @@ def load_local_env() -> None:
 
 load_local_env()
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
-USE_OLLAMA = os.getenv("USE_OLLAMA", "false").lower() in {"1", "true", "yes", "y"}
-OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "8"))
+USE_OLLAMA = True
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "45"))
 
 app = FastAPI(title="LetThemCook Backend API", version="1.2.0")
 
@@ -71,8 +71,13 @@ class RecipeSearchRequest(BaseModel):
     nameQuery: str = ""
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
 class ChatRequest(BaseModel):
     user_message: str
+    history: list[ChatMessage] = Field(default_factory=list) # Adds memory support
 
 
 class RecipeQuery(BaseModel):
@@ -365,17 +370,14 @@ def is_let_them_cook_topic(user_message: str) -> bool:
     return False
 
 
-def build_ollama_prompt(user_message: str, recipes: list[dict[str, Any]]) -> str:
+def build_system_prompt(recipes: list[dict[str, Any]]) -> str:
     context = []
     for recipe in recipes[:3]:
         context.append(
             {
                 "name": recipe.get("name"),
-                "mealType": recipe.get("mealType"),
-                "sourceCategory": recipe.get("sourceCategory"),
                 "totalTime": recipe.get("totalTime"),
                 "coreIngredients": recipe.get("coreIngredients"),
-                "allIngredients": recipe.get("allIngredients", [])[:12],
                 "matched": recipe.get("matched", []),
                 "missing": recipe.get("missing", []),
                 "instructions": recipe.get("instructions", [])[:6],
@@ -385,55 +387,67 @@ def build_ollama_prompt(user_message: str, recipes: list[dict[str, Any]]) -> str
     context_text = json.dumps(context, ensure_ascii=False, indent=2)
 
     return f"""
-You are LetThemCook Kitchen AI, a local Filipino recipe and food-waste assistant.
+You are LetThemCook Kitchen AI, a friendly, highly conversational Filipino recipe assistant.
 
-STRICT SCOPE:
-- Answer only about LetThemCook, recipes, ingredients, substitutions, food storage, meal planning, cooking steps, and reducing food waste.
-- If the user asks about anything unrelated, reply exactly: "I can only help with LetThemCook cooking questions — recipes, ingredients, storage, substitutions, and meal planning. 🍳"
+CRITICAL RULES - CONVERSATION PHASES:
+You must strictly follow these two phases of conversation. DO NOT jump to Phase 2 until the user explicitly confirms!
 
-LETTHEMCOOK GROUNDING RULES:
-- Use ONLY the Recipe Context below for recipe-specific answers.
-- Do NOT invent recipes, ingredients, cooking times, or steps that are not present in the context.
-- If the context does not contain a matching recipe, say you could not find it in LetThemCook and ask the user to try another dish or list ingredients.
-- When a recipe is found, name it naturally, mention the time if available, list the main ingredients, and give clear first steps from the stored instructions.
-- If ingredients are missing, say what is missing. Do not pretend the user has everything.
-- Do NOT tell the user that the answer came from a database, dataset, CSV, file, or mock data.
-- Be friendly, concise, and use plain text. Do not output JSON.
+PHASE 1: OPTIONS & CONFIRMATION (NO STEPS YET)
+- If the user asks for a recipe by name (e.g., "Adobo" or "How to make Sinigang") OR gives ingredients (e.g., "2 eggs"):
+- 🚨 NEVER give the recipe steps or ingredient measurements right away! 🚨
+- INSTEAD, look at the Recipe Context. If there are multiple matches, present them as options: "I found a few ways to make that! I have [Option 1] and [Option 2]. Which recipe are we going for?"
+- If there is only one match, ask for confirmation: "I have a great recipe for [Recipe Name]. Want me to guide you through the steps?"
 
-User message:
-{user_message}
+PHASE 2: EXECUTION (GIVING THE STEPS)
+- ONLY enter Phase 2 AFTER the user explicitly chooses an option or says "Yes" to your Phase 1 question.
+- Once they confirm (e.g., "Chicken adobo please", "Yes, let's do it"), THEN provide the full ingredient list and step-by-step instructions.
+- Be dynamic, supportive, and chatty like a real chef.
 
 Recipe Context:
 {context_text}
 """.strip()
 
 
-def call_ollama(user_message: str, recipes: list[dict[str, Any]]) -> str | None:
+def call_ollama(user_message: str, recipes: list[dict[str, Any]], history: list[ChatMessage] = None) -> str | None:
     if not USE_OLLAMA:
         return None
 
-    prompt = build_ollama_prompt(user_message, recipes)
+    # Dynamically switch the endpoint from /generate to /chat
+    chat_url = OLLAMA_URL.replace("/api/generate", "/api/chat")
+    
+    system_prompt = build_system_prompt(recipes)
+    
+    # Build the messages array for memory
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # Inject chat history
+    if history:
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+            
+    # Add the current user message
+    messages.append({"role": "user", "content": user_message})
 
     try:
         response = requests.post(
-            OLLAMA_URL,
+            chat_url,
             json={
                 "model": OLLAMA_MODEL,
-                "prompt": prompt,
+                "messages": messages, # Using messages instead of prompt
                 "stream": False,
                 "options": {
-                    "temperature": 0.2,
-                    "top_p": 0.8,
-                    "num_predict": 450,
+                    "temperature": 0.8, # Slightly higher temperature for less robotic responses
+                    "top_p": 0.9,
                 },
             },
-            timeout=OLLAMA_TIMEOUT_SECONDS,
+            timeout=60,
         )
         response.raise_for_status()
         data = response.json()
-        reply = (data.get("response") or "").strip()
+        reply = (data.get("message", {}).get("content") or "").strip()
         return reply or None
-    except Exception:
+    except Exception as e:
+        print(f"\n❌ OLLAMA CRASHED OR TIMED OUT: {e}\n")
         return None
 
 def fallback_chat_reply(user_message: str, recipes: list[dict[str, Any]]) -> str:
@@ -528,12 +542,19 @@ def looks_like_ingredient_request(user_message: str) -> bool:
         " ingredients ",
         " ingredient ",
         " pantry ",
+        " just ", # Added for phrases like "just eggs"
     ]
     if any(marker in text for marker in ingredient_markers):
         return True
 
     # Plain comma-separated ingredient list: "eggs, butter, rice".
     if "," in user_message and len([p for p in user_message.split(",") if p.strip()]) >= 2:
+        return True
+        
+    # FIX: If the message is very short (1-3 words) and contains a basic ingredient, treat it as a pantry request.
+    basic_ingredients = {"egg", "eggs", "rice", "chicken", "pork", "beef", "fish", "garlic", "onion"}
+    tokens = set(normalize(user_message).split())
+    if len(tokens) <= 3 and tokens & basic_ingredients:
         return True
 
     return False
@@ -673,32 +694,24 @@ def search_recipes(request: RecipeSearchRequest) -> dict[str, Any]:
 @app.post("/api/chat")
 def chat_with_chef_llama(request: ChatRequest) -> dict[str, str]:
     user_message = request.user_message.strip()
+    history = request.history 
 
-    common_reply = answer_common_cooking_question(user_message)
-    if common_reply:
-        return {"chef_reply": common_reply}
+    #common_reply = answer_common_cooking_question(user_message)
+    #if common_reply:
+    #    return {"chef_reply": common_reply}
 
-    # Hard guardrail: do not send unrelated questions to Ollama.
-    # This keeps the local model focused on LetThemCook and cooking only.
-    if not is_let_them_cook_topic(user_message):
-        return {"chef_reply": OFF_TOPIC_REPLY}
+    #if not history and not is_let_them_cook_topic(user_message):
+    #   return {"chef_reply": OFF_TOPIC_REPLY}
 
-    if "database" in user_message.lower() or "dataset" in user_message.lower() or "csv" in user_message.lower():
-        return {"chef_reply": fallback_chat_reply(user_message, [])}
-
-    # If the user asks for a named dish, search recipe titles first.
-    # Example: "How to make breakfast steak?" should find Filipino Breakfast Steak
-    # instead of treating "breakfast steak" as pantry ingredients.
     dish_query = extract_recipe_name_query(user_message)
     if dish_query:
         name_matches = search_recipes_by_name(dish_query)
         if name_matches:
-            ollama_reply = call_ollama(user_message, name_matches)
+            # Pass history here
+            ollama_reply = call_ollama(user_message, name_matches, history)
             if ollama_reply:
                 return {"chef_reply": ollama_reply}
             return {"chef_reply": recipe_detail_reply(name_matches[0], name_matches)}
-
-        # Do not let Llama invent a dish if the dataset has no matching title.
         return {"chef_reply": NO_MATCH_REPLY}
 
     pantry = extract_pantry_from_message(user_message) if looks_like_ingredient_request(user_message) else []
@@ -707,13 +720,24 @@ def chat_with_chef_llama(request: ChatRequest) -> dict[str, str]:
         matched_recipes = [recipe for recipe in recipes if recipe.get("score", 0) > 0]
 
         if matched_recipes:
-            ollama_reply = call_ollama(user_message, matched_recipes)
+            # Pass history here
+            ollama_reply = call_ollama(user_message, matched_recipes, history)
             if ollama_reply:
                 return {"chef_reply": ollama_reply}
             return {"chef_reply": fallback_chat_reply(user_message, matched_recipes)}
 
+        # Also pass history if no direct db match, so it can still give common-sense answers
+        ollama_reply = call_ollama(user_message, [], history)
+        if ollama_reply:
+            return {"chef_reply": ollama_reply}
+            
         return {"chef_reply": NO_MATCH_REPLY}
 
+    # Final fallback passing history
+    ollama_reply = call_ollama(user_message, [], history)
+    if ollama_reply:
+        return {"chef_reply": ollama_reply}
+        
     return {
         "chef_reply": (
             "I can help, but I need a dish name from LetThemCook or a list of ingredients. "
