@@ -80,7 +80,7 @@ export const RECIPE_MODAL = {
   availableSubLabel: "Available Ingredients",
   additionalDivider: "Additional Ingredients",
   cookingMethodLabel: "Cooking Method",
-  cookTimeLabel: "Cook Time",
+  totalTimeLabel: "Total Time",
 };
 
 

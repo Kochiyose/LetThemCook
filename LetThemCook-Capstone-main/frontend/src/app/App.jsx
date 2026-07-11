@@ -66,7 +66,14 @@ import {
 const WELCOME = { id: "0", role: "assistant", content: WELCOME_MESSAGE };
 
 // ─── Components (defined OUTSIDE App to avoid re-mount on every render) ───────
-
+function formatTotalTime(minutes) {
+  if (!minutes && minutes !== 0) return "—";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} hr`;
+  return `${h} hr ${m} min`;
+}
 /**
  * MealBadge - Shows the meal type (Breakfast, Lunch, Dinner)
  */
@@ -187,27 +194,23 @@ function RecipeModal({ r, onClose, hasPantry }) {
             <MealBadge type={r.mealType} />
           </div>
 
-          {/* Times row */}
-          <div
-            className="flex justify-center divide-x divide-stone-200 mt-5 text-sm"
-            style={{ fontFamily: "'DM Sans', sans-serif" }}
-          >
-            {[
-              [RECIPE_MODAL.prepTimeLabel, r.prepTime],
-              [RECIPE_MODAL.cookTimeLabel, r.cookTime],
-              [RECIPE_MODAL.totalTimeLabel, r.totalTime],
-            ].map(([label, val]) => (
-              <div key={label} className="px-5 text-center first:pl-0 last:pr-0">
-                <p
-                  className="text-[9px] uppercase tracking-[0.15em] text-stone-400 font-semibold"
-                  style={{ fontFamily: "'DM Mono', monospace" }}
-                >
-                  {label}
-                </p>
-                <p className="font-semibold text-stone-700 mt-0.5">{val}</p>
-              </div>
-            ))}
-          </div>
+       {/* Total time */}
+<div
+  className="flex justify-center mt-5 text-sm"
+  style={{ fontFamily: "'DM Sans', sans-serif" }}
+>
+  <div className="px-5 text-center">
+    <p
+      className="text-[9px] uppercase tracking-[0.15em] text-stone-400 font-semibold"
+      style={{ fontFamily: "'DM Mono', monospace" }}
+    >
+      {RECIPE_MODAL.totalTimeLabel}
+    </p>
+    <p className="font-semibold text-stone-700 mt-0.5">
+      {formatTotalTime(r.timeMinutes)}
+    </p>
+  </div>
+</div>
 
           {/* Cooking method */}
           <div className="mt-4 inline-flex items-center gap-1.5 bg-stone-100 rounded-full px-4 py-1.5">
