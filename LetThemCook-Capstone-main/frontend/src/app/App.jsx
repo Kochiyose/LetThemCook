@@ -34,6 +34,7 @@ import {
   BookOpen,
   CheckCircle2,
   PlusCircle,
+  ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -404,7 +405,7 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [mobileTab, setMobileTab] = useState("recipes");
   const [ranked, setRanked] = useState([]);
-
+  const [showQuickPrompts, setShowQuickPrompts] = useState(true);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -955,24 +956,30 @@ export default function App() {
       </div>
 
       {/* Quick prompts */}
-      <div className="flex-shrink-0 px-4 pb-2 space-y-1.5">
-        <p
-          className="text-[9px] text-stone-400 uppercase tracking-widest mb-1 px-0.5"
-          style={{ fontFamily: "'DM Mono', monospace" }}
-        >
-          Quick questions:
-        </p>
-        {QUICK_PROMPTS.map((s) => (
-          <button
-            key={s}
-            onClick={() => sendMsg(s)}
-            className="w-full text-left text-xs px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-stone-500 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all shadow-sm"
-            style={{ fontFamily: "'DM Sans', sans-serif" }}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+<div className="flex-shrink-0 px-4 pb-2 space-y-1.5">
+  <button
+    onClick={() => setShowQuickPrompts((v) => !v)}
+    className="w-full flex items-center justify-between text-[9px] text-stone-400 uppercase tracking-widest mb-1 px-0.5 hover:text-stone-600 transition-colors"
+    style={{ fontFamily: "'DM Mono', monospace" }}
+  >
+    Quick questions:
+    <ChevronDown
+      size={12}
+      className={`transition-transform ${showQuickPrompts ? "" : "-rotate-90"}`}
+    />
+  </button>
+  {showQuickPrompts &&
+    QUICK_PROMPTS.map((s) => (
+      <button
+        key={s}
+        onClick={() => sendMsg(s)}
+        className="w-full text-left text-xs px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-stone-500 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all shadow-sm"
+        style={{ fontFamily: "'DM Sans', sans-serif" }}
+      >
+        {s}
+      </button>
+    ))}
+</div>
 
       {/* Chat input */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
