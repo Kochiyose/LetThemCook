@@ -55,20 +55,19 @@ The backend will run at:
 http://127.0.0.1:8000
 ```
 
-## Run frontend and backend separately
+## Run frontend and backend in the same Terminal
 
-Terminal 1 — backend:
+cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
 
-```powershell
-cd backend
-python -m uvicorn Main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Terminal 2 — frontend:
-
-```powershell
-cd frontend
 npm install
+npm run install:frontend
+python -m pip install -r backend/requirements.txt
+
+ollama pull llama3.2:3b
+ollama pull all-minilm
+
+python backend/build_chroma.py
+
 npm run dev
 ```
 
