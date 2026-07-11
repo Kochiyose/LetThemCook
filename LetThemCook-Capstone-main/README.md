@@ -32,29 +32,6 @@ LetThemCook-Capstone-main/
 └─ package.json
 ```
 
-## Quick start on Windows PowerShell
-
-Open PowerShell inside the project folder, then run:
-
-```powershell
-npm install
-npm run install:frontend
-npm run install:backend
-npm run dev
-```
-
-Then open:
-
-```text
-http://localhost:5173/
-```
-
-The backend will run at:
-
-```text
-http://127.0.0.1:8000
-```
-
 ## Run frontend and backend in the same Terminal
 
 cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
@@ -69,6 +46,17 @@ ollama pull all-minilm
 python backend/build_chroma.py
 
 npm run dev
+
+Then open:
+
+```text
+http://localhost:5173/
+```
+
+The backend will run at:
+
+```text
+http://127.0.0.1:8000
 ```
 
 ## API endpoints
