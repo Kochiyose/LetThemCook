@@ -55,6 +55,10 @@ function formatTotalTime(minutes) {
   if (m === 0) return `${h} hr`;
   return `${h} hr ${m} min`;
 }
+
+function sanitizeIngredientInput(value) {
+  return value.replace(/[^a-zA-Z, -]/g, "");
+}
 /**
  * MealBadge - Shows the meal type (Breakfast, Lunch, Dinner)
  */
@@ -627,7 +631,7 @@ export default function App() {
 
     if (!systemHealth.chroma_query_ready) {
       return {
-        label: "Local catalog · Chroma unavailable",
+        label: "Local · Chroma unavailable",
         container: "bg-amber-50 border-amber-200",
         dot: "bg-amber-400",
         text: "text-amber-700",
@@ -699,7 +703,7 @@ export default function App() {
             <input
               type="text"
               value={inputVal}
-              onChange={(e) => setInputVal(e.target.value)}
+            onChange={(e) => setInputVal(sanitizeIngredientInput(e.target.value))}  
               onKeyDown={handleIngKey}
               placeholder={INGREDIENT_INPUT.placeholder}
               className="w-full text-sm bg-stone-50 border border-stone-200 rounded-xl px-4 py-2.5 text-stone-800 placeholder:text-stone-300 outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/10 transition-all"
