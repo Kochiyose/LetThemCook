@@ -1,13 +1,5 @@
 // =============================================================================
-// CHAT CONFIGURATION - EASY TO EDIT! 🧑‍💻
-// =============================================================================
 // This file controls everything that appears inside the AI chat panel.
-//
-// WHO SHOULD EDIT THIS FILE:
-//   - Anyone who wants to change what the AI says
-//   - Anyone who wants to change the quick-prompt buttons
-//   - Backend team: when your real Ollama / API is connected, you can
-//     delete AI_FALLBACK_REPLIES entirely — the real model will answer instead.
 //
 // HOW TO EDIT:
 //   - Change any string value between the quotes " "
@@ -18,7 +10,7 @@
 
 // This is the first message users see when they open the chat
 export const WELCOME_MESSAGE =
-  "Hi there! 👨‍🍳 I'm your LetThemCook dataset-grounded cooking assistant. Tell me what ingredients you have on hand, and I'll help you find the perfect recipe. You can also ask me about cooking tips, substitutions, or how to store food!";
+  "Hi there! 👨‍🍳 I'm your Kitchen AI assistant. Tell me what ingredients you have on hand, and I'll help you find the perfect recipe. You can also ask me about cooking tips, substitutions, or how to store food!";
 
 
 // These messages cycle in order - one per user message

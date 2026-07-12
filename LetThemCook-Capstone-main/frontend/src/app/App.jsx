@@ -1,25 +1,5 @@
 // =============================================================================
 // App.jsx — Main React Component (UI Shell Only)
-// =============================================================================
-//
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │  QUICK REFERENCE — WHERE TO GO TO CHANGE THINGS                        │
-// ├─────────────────────────────────────────────────────────────────────────┤
-// │  Change recipe data / ingredients / instructions                        │
-// │    → backend/data/LetThemCook_Core_Database.csv                                           │
-// │                                                                         │
-// │  Change the AI chat messages, quick prompts, welcome text               │
-// │    → src/app/config/chat.config.js                                     │
-// │                                                                         │
-// │  Change button labels, section headings, placeholder text               │
-// │    → src/app/config/ui.config.js                                       │
-// │                                                                         │
-// │  Connect API / mock database / AI backend                              │
-// │    → src/app/services/recipeService.js                                 │
-// │                                                                         │
-// │  THIS FILE  — only edit if you're changing the layout or UI structure  │
-// └─────────────────────────────────────────────────────────────────────────┘
-
 import { useState, useRef, useEffect } from "react";
 import {
   X,
@@ -39,7 +19,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 
 // ── Recipe data & search service ──────────────────────────────────────────────
-import { searchRecipes, chatWithChef } from "./services/recipeService.js";
+import { searchRecipes, chatWithChef, getSystemHealth } from "./services/recipeService.js";
 
 // ── Text / label config (edit these files, not this one) ─────────────────────
 import {
@@ -350,6 +330,35 @@ function RecipeModal({ r, onClose, hasPantry }) {
             )}
           </section>
 
+          {/* Show pantry items that are not used by this selected recipe. */}
+          {hasPantry && (r.unusedPantry || []).length > 0 && (
+            <section className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-4">
+              <h3
+                className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700 mb-2"
+                style={{ fontFamily: "'DM Mono', monospace" }}
+              >
+                Unused pantry ingredients
+              </h3>
+              <p
+                className="text-xs text-stone-500 mb-2"
+                style={{ fontFamily: "'DM Sans', sans-serif" }}
+              >
+                These items are in your pantry but are not needed for this recipe.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {r.unusedPantry.map((ingredient) => (
+                  <span
+                    key={ingredient}
+                    className="text-xs rounded-full border border-amber-200 bg-white px-2.5 py-1 text-amber-700"
+                    style={{ fontFamily: "'DM Mono', monospace" }}
+                  >
+                    {ingredient}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* ── INSTRUCTIONS ── */}
           <section>
             <div className="flex items-center gap-3 mb-5">
@@ -397,7 +406,6 @@ export default function App() {
   const [pantry, setPantry] = useState([]);
   const [inputVal, setInputVal] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
-  const [searched, setSearched] = useState(false);
   const [nameSearch, setNameSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([WELCOME]);
@@ -406,6 +414,9 @@ export default function App() {
   const [mobileTab, setMobileTab] = useState("recipes");
   const [ranked, setRanked] = useState([]);
   const [showQuickPrompts, setShowQuickPrompts] = useState(true);
+  const [recipeSource, setRecipeSource] = useState("checking");
+  const [systemHealth, setSystemHealth] = useState(null);
+
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -424,22 +435,60 @@ export default function App() {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [chatInput]);
 
-  // Ask the backend to rank recipes whenever pantry/filter/search changes.
-  // The service has a local fallback, so the app still works if the backend is off.
+  // Check the real backend, Ollama, model, and ChromaDB status.
+  // The first check runs when the page opens, then repeats every 60 seconds.
   useEffect(() => {
     let active = true;
 
-    searchRecipes(pantry, activeFilter, nameSearch)
-      .then((results) => {
-        if (active) setRanked(results);
-      })
-      .catch((error) => {
-        console.error("Recipe search failed:", error);
-        if (active) setRanked([]);
-      });
+    const checkHealth = async () => {
+      try {
+        const health = await getSystemHealth();
+        if (active) setSystemHealth(health);
+      } catch (error) {
+        console.warn("Local backend health check failed:", error);
+        if (active) {
+          setSystemHealth({
+            backend_ready: false,
+            status: "offline",
+          });
+        }
+      }
+    };
+
+    checkHealth();
+    const timer = window.setInterval(checkHealth, 60000);
 
     return () => {
       active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  // Ask the backend to rank recipes whenever pantry/filter/search changes.
+  // A 300 ms debounce stops one API request from being sent for every key press.
+  useEffect(() => {
+    let active = true;
+
+    const timer = window.setTimeout(() => {
+      searchRecipes(pantry, activeFilter, nameSearch)
+        .then(({ results, source }) => {
+          if (active) {
+            setRanked(results);
+            setRecipeSource(source);
+          }
+        })
+        .catch((error) => {
+          console.error("Recipe search failed:", error);
+          if (active) {
+            setRanked([]);
+            setRecipeSource("error");
+          }
+        });
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
     };
   }, [pantry, activeFilter, nameSearch]);
 
@@ -490,16 +539,29 @@ export default function App() {
     const content = (text ?? chatInput).trim();
     if (!content || isTyping) return;
 
-    setMessages((p) => [...p, { id: Date.now().toString(), role: "user", content }]);
+    // Send only real conversation messages. The welcome message is UI text and
+    // does not need to be repeated to Llama. Limit history to keep prompts small.
+    const history = messages
+      .filter((message) => message.id !== "0")
+      .slice(-12)
+      .map(({ role, content: messageContent }) => ({
+        role,
+        content: messageContent,
+      }));
+
+    setMessages((previous) => [
+      ...previous,
+      { id: Date.now().toString(), role: "user", content },
+    ]);
     setChatInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     setIsTyping(true);
 
     try {
-      const reply = await chatWithChef(content);
-      setMessages((p) => [
-        ...p,
+      const reply = await chatWithChef(content, history);
+      setMessages((previous) => [
+        ...previous,
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
@@ -508,13 +570,13 @@ export default function App() {
       ]);
     } catch (error) {
       console.error("Backend chat failed:", error);
-      setMessages((p) => [
-        ...p,
+      setMessages((previous) => [
+        ...previous,
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
           content:
-            "I cannot connect to the backend kitchen yet. Please run the Python server, then try again. 🍳",
+            "I cannot connect to the local backend. Please run the Python server and Ollama, then try again. 🍳",
         },
       ]);
     } finally {
@@ -532,6 +594,53 @@ export default function App() {
       sendMsg();
     }
   };
+
+  // Build one truthful status object for both the recipe and chat headers.
+  // This replaces the old hardcoded green "online" badge.
+  const connectionStatus = (() => {
+    if (!systemHealth) {
+      return {
+        label: "Checking local services…",
+        container: "bg-stone-50 border-stone-200",
+        dot: "bg-stone-400",
+        text: "text-stone-500",
+      };
+    }
+
+    if (!systemHealth.backend_ready || recipeSource === "frontend_fallback") {
+      return {
+        label: "Offline",
+        container: "bg-amber-50 border-amber-200",
+        dot: "bg-amber-400",
+        text: "text-amber-700",
+      };
+    }
+
+    if (!systemHealth.ollama_ready || !systemHealth.model_ready) {
+      return {
+        label: "Local catalog · AI offline",
+        container: "bg-amber-50 border-amber-200",
+        dot: "bg-amber-400",
+        text: "text-amber-700",
+      };
+    }
+
+    if (!systemHealth.chroma_query_ready) {
+      return {
+        label: "Local catalog · Chroma unavailable",
+        container: "bg-amber-50 border-amber-200",
+        dot: "bg-amber-400",
+        text: "text-amber-700",
+      };
+    }
+
+    return {
+      label: "Llama 3.2 3B · Local",
+      container: "bg-emerald-50 border-emerald-200",
+      dot: "bg-emerald-400",
+      text: "text-emerald-600",
+    };
+  })();
 
   // ── Recipe Panel JSX ───────────────────────────────────────────────────────
   const recipePanel = (
@@ -556,13 +665,16 @@ export default function App() {
               {APP_IDENTITY.tagline}
             </p>
           </div>
-          <div className="ml-auto hidden sm:flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div
+            className={`ml-auto hidden sm:flex items-center gap-1.5 border rounded-full px-3 py-1.5 ${connectionStatus.container}`}
+            title="Live status from the FastAPI /health endpoint"
+          >
+            <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus.dot} animate-pulse`} />
             <span
-              className="text-[10px] text-emerald-600 font-medium"
+              className={`text-[10px] font-medium ${connectionStatus.text}`}
               style={{ fontFamily: "'DM Mono', monospace" }}
             >
-              {APP_IDENTITY.aiStatus}
+              {connectionStatus.label}
             </span>
           </div>
         </div>
@@ -776,10 +888,11 @@ export default function App() {
               <div className="flex items-start gap-3">
                 {/* Rank number */}
                 <span
-                className="text-3xl font-bold leading-none flex-shrink-0 w-12 text-right transition-colors text-stone-200 group-hover:text-primary/20"
-                 style={{ fontFamily: "'Lora', serif" }}>
-                   {idx + 1}
-                 </span>
+                  className="text-3xl font-bold leading-none flex-shrink-0 w-12 text-right transition-colors text-stone-200 group-hover:text-primary/20"
+                  style={{ fontFamily: "'Lora', serif" }}
+                >
+                  {idx + 1}
+                </span>
 
                 <div className="flex-1 min-w-0">
                   <p
@@ -887,15 +1000,15 @@ export default function App() {
               {CHAT_HEADER.name}
             </p>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus.dot} animate-pulse`} />
               <p
-                className="text-[9px] text-stone-400 uppercase tracking-widest"
+                className={`text-[9px] uppercase tracking-widest ${connectionStatus.text}`}
                 style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 {isTyping ? (
                   <span className="text-primary">{CHAT_HEADER.statusThinking}</span>
                 ) : (
-                  CHAT_HEADER.statusIdle
+                  connectionStatus.label
                 )}
               </p>
             </div>
@@ -955,31 +1068,31 @@ export default function App() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Quick prompts */}
-<div className="flex-shrink-0 px-4 pb-2 space-y-1.5">
-  <button
-    onClick={() => setShowQuickPrompts((v) => !v)}
-    className="w-full flex items-center justify-between text-[9px] text-stone-400 uppercase tracking-widest mb-1 px-0.5 hover:text-stone-600 transition-colors"
-    style={{ fontFamily: "'DM Mono', monospace" }}
-  >
-    Quick questions:
-    <ChevronDown
-      size={12}
-      className={`transition-transform ${showQuickPrompts ? "" : "-rotate-90"}`}
-    />
-  </button>
-  {showQuickPrompts &&
-    QUICK_PROMPTS.map((s) => (
-      <button
-        key={s}
-        onClick={() => sendMsg(s)}
-        className="w-full text-left text-xs px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-stone-500 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all shadow-sm"
-        style={{ fontFamily: "'DM Sans', sans-serif" }}
-      >
-        {s}
-      </button>
-    ))}
-</div>
+      {/* Quick prompts can be collapsed to give the chat more vertical space. */}
+      <div className="flex-shrink-0 px-4 pb-2 space-y-1.5">
+        <button
+          onClick={() => setShowQuickPrompts((visible) => !visible)}
+          className="w-full flex items-center justify-between text-[9px] text-stone-400 uppercase tracking-widest mb-1 px-0.5 hover:text-stone-600 transition-colors"
+          style={{ fontFamily: "'DM Mono', monospace" }}
+        >
+          Quick questions:
+          <ChevronDown
+            size={12}
+            className={`transition-transform ${showQuickPrompts ? "" : "-rotate-90"}`}
+          />
+        </button>
+        {showQuickPrompts &&
+          QUICK_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => sendMsg(prompt)}
+              className="w-full text-left text-xs px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-stone-500 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all shadow-sm"
+              style={{ fontFamily: "'DM Sans', sans-serif" }}
+            >
+              {prompt}
+            </button>
+          ))}
+      </div>
 
       {/* Chat input */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">

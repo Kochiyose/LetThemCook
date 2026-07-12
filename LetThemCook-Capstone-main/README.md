@@ -36,16 +36,16 @@ LetThemCook-Capstone-main/
 
 cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
 
-npm install
-npm run install:frontend
-python -m pip install -r backend/requirements.txt
+  npm install
+  npm run install:frontend
+  python -m pip install -r backend/requirements.txt
 
-ollama pull llama3.2:3b
-ollama pull all-minilm
+  ollama pull llama3.2:3b
+  ollama pull all-minilm
 
-python backend/build_chroma.py
+  python backend/build_chroma.py
 
-npm run dev
+  npm run dev
 
 Then open:
 

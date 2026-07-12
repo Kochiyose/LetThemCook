@@ -1,98 +1,151 @@
 /**
  * Recipe service
  * --------------
- * Primary source: FastAPI backend using backend/data/LetThemCook_Core_Database.csv.
- * Fallback source: local recipes.mock.json, generated from the same CSV.
+ * Primary source: FastAPI + ChromaDB + backend/data/LetThemCook_Cleaned.csv.
+ * Safe fallback: local recipes.mock.json when the backend cannot be reached.
+ *
+ * The service returns the source name so App.jsx can show whether the page is
+ * using the real local backend or only the offline frontend catalog.
  */
 
 import { RECIPE_DATABASE } from "../data/recipes.js";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
+// These small staples are allowed by the project even when the user does not
+// type them in the pantry. Keep this list short to avoid loose recommendations.
+const BASIC_STAPLES = new Set([
+  "water",
+  "salt",
+  "pepper",
+  "black pepper",
+  "ground black pepper",
+  "cooking oil",
+  "vegetable oil",
+]);
+
 const normalize = (value) =>
   String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 
+function phraseInside(longer, shorter) {
+  if (!longer || !shorter) return false;
+  const escaped = shorter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`).test(longer);
+}
+
 /**
- * Builds the matched/missing/score/tier info the UI cards and modal rely on.
- * Unlike the backend, this checks the recipe's FULL ingredient list — not
- * just the first 6 "core" ones — so a searched ingredient (e.g. egg) shows
- * up as matched even if it's the 7th+ ingredient in the recipe. Recipes
- * that don't contain any searched ingredient are dropped entirely.
+ * Match one recipe ingredient with one pantry item.
+ * Word boundaries stop wrong matches such as "egg" matching "eggplant".
  */
-function applyPantryMatch(recipe, pantryTerms) {
-  const allIngredients = recipe.allIngredients || [];
+function ingredientMatches(ingredient, pantryItem) {
+  const ingredientKey = normalize(ingredient);
+  const pantryKey = normalize(pantryItem);
+  if (!ingredientKey || !pantryKey) return false;
 
-  const hasMatch = (ingredient) => {
-    const key = normalize(ingredient);
-    return pantryTerms.some((term) => key.includes(term) || term.includes(key));
-  };
-
-  if (pantryTerms.length === 0) {
-    const core = recipe.coreIngredients && recipe.coreIngredients.length
-      ? recipe.coreIngredients
-      : allIngredients.slice(0, 6);
-    return { ...recipe, matched: [], missing: [], score: 0, tier: 3, coreIngredients: core, availLines: [], missingLines: allIngredients };
+  if (phraseInside(ingredientKey, pantryKey) || phraseInside(pantryKey, ingredientKey)) {
+    return true;
   }
 
-  const matchedFull = allIngredients.filter(hasMatch);
-  const others = allIngredients.filter((ingredient) => !matchedFull.includes(ingredient));
-  // Show matched ingredients first, then fill up to 6 total with the rest,
-  // so the "X/Y" badge and "Still need" list reflect reality.
-  const displayCore = [...matchedFull, ...others].slice(0, Math.max(6, matchedFull.length));
+  // Allow a basic singular/plural difference: onion ↔ onions, egg ↔ eggs.
+  const ingredientSingular = ingredientKey.length > 3 ? ingredientKey.replace(/s$/, "") : ingredientKey;
+  const pantrySingular = pantryKey.length > 3 ? pantryKey.replace(/s$/, "") : pantryKey;
+  return (
+    phraseInside(ingredientSingular, pantrySingular) ||
+    phraseInside(pantrySingular, ingredientSingular)
+  );
+}
 
-  const matched = displayCore.filter(hasMatch);
-  const missing = displayCore.filter((ingredient) => !hasMatch(ingredient));
-  const score = matched.length / (displayCore.length || 1);
-  const tier = missing.length === 0 ? 1 : missing.length <= 1 ? 2 : 3;
+function isBasicStaple(ingredient) {
+  const key = normalize(ingredient);
+  return [...BASIC_STAPLES].some(
+    (staple) =>
+      key === staple || key.startsWith(`${staple} `) || key.endsWith(` ${staple}`)
+  );
+}
 
-  const availLines = allIngredients.filter(hasMatch);
-  const missingLines = allIngredients.filter((ingredient) => !hasMatch(ingredient));
+/**
+ * Rebuild the match information by checking the complete ingredient list.
+ * Older code used only the first six ingredients, which could show a wrong
+ * "Available Ingredients Only" badge.
+ */
+function applyPantryMatch(recipe, pantry = []) {
+  const allIngredients = recipe.allIngredients || recipe.coreIngredients || [];
+  const pantryItems = (pantry || []).map((item) => String(item).trim()).filter(Boolean);
+
+  if (pantryItems.length === 0) {
+    return {
+      ...recipe,
+      matched: [],
+      missing: [],
+      score: 0,
+      tier: 3,
+      availLines: [],
+      missingLines: allIngredients,
+      unusedPantry: [],
+    };
+  }
+
+  const matchesAnyPantryItem = (ingredient) =>
+    pantryItems.some((pantryItem) => ingredientMatches(ingredient, pantryItem));
+
+  const matched = allIngredients.filter(matchesAnyPantryItem);
+  const availLines = allIngredients.filter(
+    (ingredient) => matchesAnyPantryItem(ingredient) || isBasicStaple(ingredient)
+  );
+  const missingLines = allIngredients.filter(
+    (ingredient) => !availLines.includes(ingredient) && !isBasicStaple(ingredient)
+  );
+  const requiredIngredients = allIngredients.filter((ingredient) => !isBasicStaple(ingredient));
+  const score = matched.length / (requiredIngredients.length || 1);
+  const tier = missingLines.length === 0 ? 1 : missingLines.length <= 1 ? 2 : 3;
+  const unusedPantry = pantryItems.filter(
+    (pantryItem) => !allIngredients.some((ingredient) => ingredientMatches(ingredient, pantryItem))
+  );
 
   return {
     ...recipe,
     matched,
-    missing,
+    missing: missingLines,
     score,
     tier,
-    coreIngredients: displayCore,
     availLines,
     missingLines,
+    unusedPantry,
   };
 }
-
 
 function filterByName(recipes, nameQuery) {
   const query = normalize(nameQuery);
   if (!query) return recipes;
   return recipes.filter((recipe) => normalize(recipe.name).includes(query));
 }
+
 /**
- * Strict ingredient filter + rescoring. Keeps only recipes that actually
- * contain at least one searched ingredient, then rebuilds the match info
- * for each so the UI badges are accurate. Runs entirely on the frontend
- * so it applies no matter where the recipe list came from (backend API or
- * the local mock fallback).
+ * Keep only recipes that use at least one pantry item, then sort the strongest
+ * match first. This applies to both backend results and offline fallback data.
  */
-function filterByPantry(recipes, pantry) {
-  const pantryTerms = (pantry || []).map(normalize).filter(Boolean);
-  if (pantryTerms.length === 0) return recipes;
+function filterAndRankByPantry(recipes, pantry) {
+  const pantryItems = (pantry || []).map((item) => String(item).trim()).filter(Boolean);
+  if (pantryItems.length === 0) {
+    return recipes.map((recipe) => applyPantryMatch(recipe, []));
+  }
 
   return recipes
-    .filter((recipe) => {
-      const haystack = (recipe.allIngredients || []).map(normalize).join(" ");
-      return pantryTerms.some((term) => haystack.includes(term));
-    })
-    .map((recipe) => applyPantryMatch(recipe, pantryTerms))
+    .map((recipe) => applyPantryMatch(recipe, pantryItems))
+    .filter((recipe) => recipe.matched.length > 0)
     .sort(
       (a, b) =>
         b.score - a.score ||
-        a.missing.length - b.missing.length ||
+        a.missingLines.length - b.missingLines.length ||
         (a.timeMinutes || 999) - (b.timeMinutes || 999) ||
         a.name.localeCompare(b.name)
-    );
+    )
+    // Keep the interface responsive when the offline catalog has many matches.
+    .slice(0, 100);
 }
 
 async function requestJson(path, options = {}) {
@@ -109,11 +162,8 @@ async function requestJson(path, options = {}) {
 }
 
 /**
- * Search and rank recipes using the backend first, then local fallback.
- * @param {string[]} pantry
- * @param {"All" | "Breakfast" | "Lunch" | "Dinner"} mealFilter
- * @param {string} nameQuery
- * @returns {Promise<Array>}
+ * Search and rank recipes using the backend first.
+ * The source value lets App.jsx show a truthful connection badge.
  */
 export async function searchRecipes(pantry, mealFilter, nameQuery) {
   try {
@@ -122,27 +172,40 @@ export async function searchRecipes(pantry, mealFilter, nameQuery) {
       body: JSON.stringify({ pantry, mealFilter, nameQuery }),
     });
 
-    const results = Array.isArray(data) ? data : data.results || [];
-    const named = filterByName(results, nameQuery);
-    return filterByPantry(named, pantry);
+    const rawResults = Array.isArray(data) ? data : data.results || [];
+    const namedResults = filterByName(rawResults, nameQuery);
+    return {
+      results: filterAndRankByPantry(namedResults, pantry),
+      source: "backend",
+    };
   } catch (error) {
-    console.warn("Using local mock recipe database because backend is unavailable:", error);
-    return mockSearch(pantry, mealFilter, nameQuery);
+    console.warn("Backend unavailable. Using the offline frontend catalog:", error);
+    return {
+      results: mockSearch(pantry, mealFilter, nameQuery),
+      source: "frontend_fallback",
+    };
   }
 }
 
 /**
- * Send a message to Chef Llama through the FastAPI backend.
- * @param {string} userMessage
- * @returns {Promise<string>}
+ * Send a message and the previous conversation to the FastAPI backend.
+ * History gives the chatbot memory for replies such as "Yes" or "Continue".
  */
-export async function chatWithChef(userMessage) {
+export async function chatWithChef(userMessage, history = []) {
   const data = await requestJson("/api/chat", {
     method: "POST",
-    body: JSON.stringify({ user_message: userMessage }),
+    body: JSON.stringify({
+      user_message: userMessage,
+      history,
+    }),
   });
 
-  return data.chef_reply || data.message || "Chef Llama did not return a reply.";
+  return data.chef_reply || data.message || "Kitchen AI did not return a reply.";
+}
+
+/** Read the real Ollama and ChromaDB status from the backend. */
+export async function getSystemHealth() {
+  return requestJson("/health");
 }
 
 export async function getAllRecipes() {
@@ -150,7 +213,7 @@ export async function getAllRecipes() {
     const data = await requestJson("/api/recipes/all");
     return data.results || [];
   } catch (error) {
-    console.warn("Using local mock recipes because backend is unavailable:", error);
+    console.warn("Backend unavailable. Using local mock recipes:", error);
     return RECIPE_DATABASE;
   }
 }
@@ -161,17 +224,12 @@ function mockSearch(pantry, mealFilter = "All", nameQuery = "") {
       ? RECIPE_DATABASE
       : RECIPE_DATABASE.filter((recipe) => recipe.mealType === mealFilter);
 
-  const query = normalize(nameQuery);
-  const byName = query
-    ? byMeal.filter((recipe) => normalize(recipe.name).includes(query))
-    : byMeal;
+  const byName = filterByName(byMeal, nameQuery);
+  const results = filterAndRankByPantry(byName, pantry);
 
-  const pantryTerms = pantry.map(normalize).filter(Boolean);
+  if ((pantry || []).length > 0) return results;
 
-  if (pantryTerms.length > 0) {
-    return filterByPantry(byName, pantry);
-  }
-
-  const results = byName.map((recipe) => applyPantryMatch(recipe, []));
-  return results.sort((a, b) => a.mealType.localeCompare(b.mealType) || a.name.localeCompare(b.name));
+  return results.sort(
+    (a, b) => a.mealType.localeCompare(b.mealType) || a.name.localeCompare(b.name)
+  );
 }

@@ -1,13 +1,6 @@
 // =============================================================================
-// UI CONFIGURATION - EASY TO EDIT! 🧑‍💻
-// =============================================================================
 // This file controls all visible text, labels, placeholders, and messages
 // shown in the recipe browser panel (the left side of the screen).
-//
-// WHO SHOULD EDIT THIS FILE:
-//   - Anyone who wants to rename buttons, labels, or instructions
-//   - Anyone who wants to change the app name or tagline
-//   - Beginners: every section has comments explaining what it controls
 //
 // HOW TO EDIT:
 //   - Change any string value between the quotes " "
@@ -20,7 +13,8 @@
 export const APP_IDENTITY = {
   name: "LetThemCook",
   tagline: "AI-Powered Recipe Finder",
-  aiStatus: "Llama 3.2 · Local",
+  // Fallback text only. App.jsx now shows the live status from FastAPI /health.
+  aiStatus: "Checking local services",
 };
 
 
