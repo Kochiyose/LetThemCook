@@ -627,7 +627,7 @@ export default function App() {
 
     if (!systemHealth.chroma_query_ready) {
       return {
-        label: "Local catalog · Chroma unavailable",
+        label: "Local · Chroma unavailable",
         container: "bg-amber-50 border-amber-200",
         dot: "bg-amber-400",
         text: "text-amber-700",
