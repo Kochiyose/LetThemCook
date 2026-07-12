@@ -798,18 +798,18 @@ export default function App() {
           </button>
         ))}
         <div className="flex-1 min-w-[110px] relative">
-          <Search
-            size={12}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-300 pointer-events-none"
-          />
-          <input
-            type="text"
-            value={nameSearch}
-            onChange={(e) => setNameSearch(e.target.value)}
-            placeholder={SEARCH_BAR.placeholder}
-            className="w-full text-xs bg-stone-50 border border-stone-200 rounded-full pl-8 pr-3 h-8 text-stone-700 placeholder:text-stone-300 outline-none focus:border-primary/50 transition-all"
-          />
-        </div>
+  <Search
+    size={13}
+    className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none"
+  />
+  <input
+    type="text"
+    value={nameSearch}
+    onChange={(e) => setNameSearch(e.target.value)}
+    placeholder={SEARCH_BAR.placeholder}
+    className="w-full text-xs bg-white border-2 border-stone-300 rounded-full pl-8 pr-3 h-8 text-stone-700 placeholder:text-stone-400 outline-none shadow-sm hover:border-stone-400 focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+  />
+</div>
       </div>
 
       {/* Stats + ranking legend */}
