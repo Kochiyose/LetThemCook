@@ -63,7 +63,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip(
 OLLAMA_URL = os.getenv("OLLAMA_URL", f"{OLLAMA_BASE_URL}/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 USE_OLLAMA = env_flag("USE_OLLAMA", True)
-OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "45"))
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "100"))
 
 app = FastAPI(title="LetThemCook Backend API", version="1.3.0")
 
@@ -572,16 +572,50 @@ def call_ollama(
         print(f"Ollama returned an invalid response: {error}")
         return None
 
-def fallback_chat_reply(user_message: str, matched_recipes: list[dict[str, Any]]) -> str:
-    """A safe response if the local Llama 3.2 model is offline."""
-    if matched_recipes:
-        names = [f"• {r.get('name', 'Unknown Recipe')}" for r in matched_recipes[:3]]
-        return (
-            "My AI brain is currently napping, but my database found these options:\n"
-            + "\n".join(names) + 
-            "\n\n(Please start your Ollama server so we can get cooking!) 🍳"
-        )
-    return "My AI brain is currently napping, and I couldn't find a database match for that. Please wake up Ollama! 🍳"
+def fallback_chat_reply(user_message: str, matched_recipes: list[dict]) -> str:
+    """
+    Emergency Fallback: Mimics the exact JSON structure of Llama 3.2.
+    Prevents the React frontend from crashing if the AI engine goes offline.
+    """
+    import json
+
+    # Scenario A: AI is off AND no recipes match the pantry
+    if not matched_recipes:
+        fallback_data = {
+            "dish_name": "System Offline / No Match",
+            "used_ingredients": [],
+            "missing_ingredients": [],
+            "assumed_staples": [],
+            "execution_steps": [
+                "My AI reasoning engine is currently offline or loading.",
+                "I couldn't find a recipe with your exact ingredients in my fallback memory.",
+                "Please try searching for standard staples like 'Chicken' or 'Pork'."
+            ]
+        }
+        return json.dumps(fallback_data)
+
+    # Scenario B: AI is off, but ChromaDB found a RAG match!
+    # We grab the top recipe and package it exactly how the frontend expects it.
+    top_recipe = matched_recipes[0]
+    
+    # Safely extract lists (handles both standard Python lists and raw strings)
+    ingredients = top_recipe.get("RecipeIngredientParts", ["Check full recipe for ingredients"])
+    steps = top_recipe.get("RecipeInstructions", ["Cooking steps unavailable in fallback mode."])
+    
+    if isinstance(ingredients, str):
+        ingredients = [ingredients]
+    if isinstance(steps, str):
+        steps = [steps]
+
+    fallback_data = {
+        "dish_name": top_recipe.get("Name", "Fallback Suggested Recipe"),
+        "used_ingredients": ingredients,
+        "missing_ingredients": ["(AI mapping disabled in fallback mode)"],
+        "assumed_staples": ["Cooking Oil", "Salt", "Water"],
+        "execution_steps": steps
+    }
+    
+    return json.dumps(fallback_data)
 
 
 

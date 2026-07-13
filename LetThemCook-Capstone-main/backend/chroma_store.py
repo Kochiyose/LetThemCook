@@ -5,9 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import chromadb
-from chromadb.utils.embedding_functions.ollama_embedding_function import (
-    OllamaEmbeddingFunction,
-)
+
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 
 class RecipeVectorStore:
@@ -15,10 +14,7 @@ class RecipeVectorStore:
         self.collection_name = os.getenv("CHROMA_COLLECTION", "letthemcook_recipes")
         self.embedding_model = os.getenv("CHROMA_EMBED_MODEL", "all-minilm")
         self.client = chromadb.PersistentClient(path=str(base_dir / "chroma_db"))
-        self.embedding_function = OllamaEmbeddingFunction(
-            url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            model_name=self.embedding_model,
-        )
+        self.embedding_function = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
             embedding_function=self.embedding_function,
