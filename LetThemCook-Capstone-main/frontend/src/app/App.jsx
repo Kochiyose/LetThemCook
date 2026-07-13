@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   PlusCircle,
   ChevronDown,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -1076,31 +1077,39 @@ export default function App() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Quick prompts can be collapsed to give the chat more vertical space. */}
-      <div className="flex-shrink-0 px-4 pb-2 space-y-1.5">
-        <button
-          onClick={() => setShowQuickPrompts((visible) => !visible)}
-          className="w-full flex items-center justify-between text-[9px] text-stone-400 uppercase tracking-widest mb-1 px-0.5 hover:text-stone-600 transition-colors"
-          style={{ fontFamily: "'DM Mono', monospace" }}
-        >
-          Quick questions:
-          <ChevronDown
-            size={12}
-            className={`transition-transform ${showQuickPrompts ? "" : "-rotate-90"}`}
-          />
-        </button>
-        {showQuickPrompts &&
-          QUICK_PROMPTS.map((prompt) => (
-            <button
-              key={prompt}
-              onClick={() => sendMsg(prompt)}
-              className="w-full text-left text-xs px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-stone-500 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-all shadow-sm"
-              style={{ fontFamily: "'DM Sans', sans-serif" }}
-            >
-              {prompt}
-            </button>
-          ))}
+{/* Quick prompts */}
+<div className="flex-shrink-0 px-4 pb-3">
+  <div className="rounded-2xl bg-primary/[0.07] border border-primary/15 p-3">
+    <button
+      onClick={() => setShowQuickPrompts((v) => !v)}
+      className="w-full flex items-center gap-1.5 text-xs font-semibold text-primary/90 hover:text-primary transition-colors mb-2.5"
+      style={{ fontFamily: "'DM Sans', sans-serif" }}
+    >
+      <Sparkles size={14} className="text-accent flex-shrink-0" />
+      <span>Not sure what to ask? Try one of these</span>
+      <ChevronDown
+        size={14}
+        className={`ml-auto flex-shrink-0 transition-transform duration-200 ${
+          showQuickPrompts ? "" : "-rotate-90"
+        }`}
+      />
+    </button>
+    {showQuickPrompts && (
+      <div className="flex flex-wrap gap-2">
+        {QUICK_PROMPTS.map((s) => (
+          <button
+            key={s}
+            onClick={() => sendMsg(s)}
+            className="text-left text-xs leading-snug px-3.5 py-2 rounded-full border border-primary/30 bg-white text-primary hover:bg-primary hover:text-white hover:border-primary transition-all shadow-sm"
+            style={{ fontFamily: "'DM Sans', sans-serif" }}
+          >
+            {s}
+          </button>
+        ))}
       </div>
+    )}
+  </div>
+</div>
 
       {/* Chat input */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
