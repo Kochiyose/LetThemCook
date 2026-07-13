@@ -1115,20 +1115,20 @@ export default function App() {
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
         <div className="flex items-end gap-2 bg-white border border-stone-200 rounded-2xl px-4 py-3 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-all shadow-sm">
           <textarea
-            ref={textareaRef}
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={handleChatKey}
-            placeholder={CHAT_INPUT_PLACEHOLDER}
-            rows={1}
-            className="flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-300 resize-none outline-none leading-relaxed overflow-y-auto"
-            style={{
-              scrollbarWidth: "none",
-              minHeight: "24px",
-              maxHeight: "120px",
-              fontFamily: "'DM Sans', sans-serif",
-            }}
-          />
+  ref={textareaRef}
+  value={chatInput}
+  onChange={(e) => setChatInput(e.target.value)}
+  onKeyDown={handleChatKey}
+  placeholder={CHAT_INPUT_PLACEHOLDER}
+  rows={1}
+  className="no-scrollbar flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-300 resize-none outline-none leading-relaxed overflow-y-auto"
+  style={{
+    scrollbarWidth: "none",
+    minHeight: "24px",
+    maxHeight: "120px",
+    fontFamily: "'DM Sans', sans-serif",
+  }}
+/>
           <button
             onClick={() => sendMsg()}
             disabled={!chatInput.trim() || isTyping}
