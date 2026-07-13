@@ -847,12 +847,12 @@ export default function App() {
 
       {/* Recipe grid */}
       <div
-        className="flex-1 overflow-y-auto px-5 lg:px-7 py-5 min-h-0"
-        style={{
-          scrollbarWidth: "thin",
-          scrollbarColor: "#e5e0d5 transparent",
-        }}
-      >
+  className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 space-y-4 min-h-0"
+  style={{
+    scrollbarWidth: "thin",
+    scrollbarColor: "#e5e0d5 transparent",
+  }}
+>
         {/* How-to hint when no pantry */}
         {!hasPantry && (
           <div className="mb-4 p-3.5 bg-primary/5 border border-primary/15 rounded-2xl flex items-start gap-3">
@@ -1044,15 +1044,19 @@ export default function App() {
               </div>
             )}
             <div
-              className={`max-w-[85%] px-4 py-3 text-sm leading-relaxed shadow-sm whitespace-pre-line ${
-                msg.role === "user"
-                  ? "bg-primary text-white rounded-2xl rounded-br-md shadow-primary/20"
-                  : "bg-white text-stone-700 rounded-2xl rounded-bl-md border border-stone-100"
-              }`}
-              style={{ fontFamily: "'DM Sans', sans-serif" }}
-            >
-              {msg.content}
-            </div>
+  className={`max-w-[85%] px-4 py-3 text-sm leading-relaxed shadow-sm whitespace-pre-line break-words ${
+    msg.role === "user"
+      ? "bg-primary text-white rounded-2xl rounded-br-md shadow-primary/20"
+      : "bg-white text-stone-700 rounded-2xl rounded-bl-md border border-stone-100"
+  }`}
+  style={{
+    fontFamily: "'DM Sans', sans-serif",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+  }}
+>
+  {msg.content}
+</div>
           </motion.div>
         ))}
         {isTyping && (
