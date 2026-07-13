@@ -1121,7 +1121,7 @@ export default function App() {
             onKeyDown={handleChatKey}
             placeholder={CHAT_INPUT_PLACEHOLDER}
             rows={1}
-            className="flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-300 resize-none outline-none leading-relaxed overflow-hidden"
+            className="flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-300 resize-none outline-none leading-relaxed overflow-y-auto"
             style={{
               scrollbarWidth: "none",
               minHeight: "24px",
