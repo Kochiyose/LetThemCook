@@ -26,12 +26,52 @@ export const AI_FALLBACK_REPLIES = [
 ];
 
 
-// These are shortcut buttons displayed above the chat input
+// These are shortcut buttons displayed above the chat input.
+// A random handful is picked from this pool each time (see QUICK_PROMPT_COUNT
+// below), so the buttons don't look the same every visit. Keep these focused
+// on finding/choosing a recipe — general cooking-tip questions live in
+// PANTRY_QUICK_PROMPTS / RECIPE_QUICK_PROMPTS instead, which are more useful
+// since they reference the user's actual pantry or open recipe.
 export const QUICK_PROMPTS = [
   "What can I make with eggs and butter?",
-  "How do I store leftover herbs?",
-  "Can I substitute oil for butter?",
+  "What recipe can I make right now?",
+  "Suggest a recipe using what's in my pantry.",
+  "What's the easiest recipe here to start with?",
+  "Recommend a quick recipe for tonight.",
+  "What recipe uses the fewest ingredients?",
+  "Suggest a recipe for a beginner cook.",
+  "What's a good recipe if I only have 20 minutes?",
+  "Recommend a recipe using my most perishable ingredients.",
+  "What recipe should I try that's a bit different?",
+  "Suggest a healthy recipe I can make today.",
+  "What recipe pairs well with what I already have?",
+  "Recommend a recipe that uses up my leftovers.",
 ];
+
+// Use {ingredient} as a placeholder — it will be swapped for a random item
+// currently in the user's pantry, so the suggestion changes as their pantry
+// changes. These are mixed in with QUICK_PROMPTS above whenever the pantry
+// isn't empty.
+export const PANTRY_QUICK_PROMPTS = [
+  "What recipe can I make with {ingredient}?",
+  "Suggest a recipe that uses up my {ingredient}.",
+  "What recipe pairs well with {ingredient}?",
+  "Any recipe ideas built around {ingredient}?",
+];
+
+// Use {recipe} as a placeholder — it will be swapped for the name of the
+// recipe the user currently has open, so the suggestion changes with
+// whichever recipe they're looking at. Mixed in whenever a recipe is open.
+export const RECIPE_QUICK_PROMPTS = [
+  "Can I substitute an ingredient in {recipe}?",
+  "How do I scale {recipe} up or down?",
+  "What's a good side dish to serve with {recipe}?",
+  "Any tips for making {recipe} turn out well?",
+  "How should I store leftovers from {recipe}?",
+];
+
+// How many quick-prompt buttons to show at once.
+export const QUICK_PROMPT_COUNT = 3;
 
 
 // Settings for the chat panel header

@@ -15,7 +15,9 @@ import {
   CheckCircle2,
   PlusCircle,
   ChevronDown,
+  ChevronRight,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -26,6 +28,9 @@ import { searchRecipes, chatWithChef, getSystemHealth } from "./services/recipeS
 import {
   WELCOME_MESSAGE,
   QUICK_PROMPTS,
+  PANTRY_QUICK_PROMPTS,
+  RECIPE_QUICK_PROMPTS,
+  QUICK_PROMPT_COUNT,
   CHAT_HEADER,
   CHAT_INPUT_HINT,
   CHAT_INPUT_PLACEHOLDER,
@@ -400,6 +405,48 @@ function RecipeModal({ r, onClose, hasPantry }) {
   );
 }
 
+// Pick `count` random, non-repeating items from an array.
+function sampleRandom(list, count) {
+  const pool = [...list];
+  const picked = [];
+  while (pool.length && picked.length < count) {
+    const i = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(i, 1)[0]);
+  }
+  return picked;
+}
+
+// Build a fresh set of quick-prompt suggestions. If a recipe is currently
+// open, one suggestion is generated from its name (via RECIPE_QUICK_PROMPTS).
+// Otherwise, if the pantry has ingredients in it, one suggestion is generated
+// from a random pantry item (via PANTRY_QUICK_PROMPTS) so the buttons reflect
+// what the user actually has on hand. The rest are randomly sampled from the
+// general QUICK_PROMPTS pool. Calling this again produces a different set,
+// which is what makes the panel feel dynamic instead of static.
+function buildQuickPrompts(pantry, selectedRecipe) {
+  const suggestions = [];
+
+  if (selectedRecipe?.name) {
+    const template =
+      RECIPE_QUICK_PROMPTS[
+        Math.floor(Math.random() * RECIPE_QUICK_PROMPTS.length)
+      ];
+    suggestions.push(template.replace("{recipe}", selectedRecipe.name));
+  } else if (pantry.length > 0) {
+    const ingredient = pantry[Math.floor(Math.random() * pantry.length)];
+    const template =
+      PANTRY_QUICK_PROMPTS[
+        Math.floor(Math.random() * PANTRY_QUICK_PROMPTS.length)
+      ];
+    suggestions.push(template.replace("{ingredient}", ingredient));
+  }
+
+  const remaining = Math.max(QUICK_PROMPT_COUNT - suggestions.length, 0);
+  suggestions.push(...sampleRandom(QUICK_PROMPTS, remaining));
+
+  return suggestions;
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 /**
@@ -419,6 +466,7 @@ export default function App() {
   const [mobileTab, setMobileTab] = useState("recipes");
   const [ranked, setRanked] = useState([]);
   const [showQuickPrompts, setShowQuickPrompts] = useState(true);
+  const [quickPrompts, setQuickPrompts] = useState(() => buildQuickPrompts([]));
   const [recipeSource, setRecipeSource] = useState("checking");
   const [systemHealth, setSystemHealth] = useState(null);
 
@@ -497,6 +545,12 @@ export default function App() {
     };
   }, [pantry, activeFilter, nameSearch]);
 
+  // Refresh the quick-prompt suggestions whenever the pantry or the currently
+  // open recipe changes, so a suggestion referencing them stays up to date.
+  useEffect(() => {
+    setQuickPrompts(buildQuickPrompts(pantry, selected));
+  }, [pantry, selected]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   /**
@@ -560,6 +614,7 @@ export default function App() {
     ]);
     setChatInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
+    setQuickPrompts(buildQuickPrompts(pantry, selected));
 
     setIsTyping(true);
 
@@ -1139,31 +1194,49 @@ export default function App() {
 
 {/* Quick prompts */}
 <div className="flex-shrink-0 px-4 pb-3">
-  <div className="rounded-2xl bg-primary/[0.07] border border-primary/15 p-3">
-    <button
-      onClick={() => setShowQuickPrompts((v) => !v)}
-      className="w-full flex items-center gap-1.5 text-xs font-semibold text-primary/90 hover:text-primary transition-colors mb-2.5"
-      style={{ fontFamily: "'DM Sans', sans-serif" }}
-    >
-      <Sparkles size={14} className="text-accent flex-shrink-0" />
-      <span>Not sure what to ask? Try one of these</span>
-      <ChevronDown
-        size={14}
-        className={`ml-auto flex-shrink-0 transition-transform duration-200 ${
-          showQuickPrompts ? "" : "-rotate-90"
-        }`}
-      />
-    </button>
+  <div className="rounded-2xl bg-primary/[0.06] border border-primary/15 p-3.5">
+    <div className="w-full flex items-center gap-2 mb-3">
+      <button
+        onClick={() => setShowQuickPrompts((v) => !v)}
+        className="flex-1 flex items-center gap-2 text-sm font-semibold text-primary transition-colors"
+        style={{ fontFamily: "'DM Sans', sans-serif" }}
+      >
+        <Sparkles size={17} className="text-accent flex-shrink-0" />
+        <span>Not sure what to ask? Try one of these</span>
+        <ChevronDown
+          size={16}
+          className={`ml-auto flex-shrink-0 transition-transform duration-200 ${
+            showQuickPrompts ? "" : "-rotate-90"
+          }`}
+        />
+      </button>
+      {showQuickPrompts && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setQuickPrompts(buildQuickPrompts(pantry, selected));
+          }}
+          title="Show different suggestions"
+          className="flex-shrink-0 p-1.5 rounded-full text-primary/70 hover:text-primary hover:bg-primary/10 transition-colors"
+        >
+          <RefreshCw size={16} />
+        </button>
+      )}
+    </div>
     {showQuickPrompts && (
-      <div className="flex flex-wrap gap-2">
-        {QUICK_PROMPTS.map((s) => (
+      <div className="flex flex-col gap-2">
+        {quickPrompts.map((s) => (
           <button
             key={s}
             onClick={() => sendMsg(s)}
-            className="text-left text-xs leading-snug px-3.5 py-2 rounded-full border border-primary/30 bg-white text-primary hover:bg-primary hover:text-white hover:border-primary transition-all shadow-sm"
+            className="w-full flex items-center gap-2.5 text-left text-sm font-medium leading-snug px-4 py-3 rounded-xl border border-primary/20 bg-white text-stone-700 hover:bg-primary hover:text-white hover:border-primary transition-all shadow-sm group"
             style={{ fontFamily: "'DM Sans', sans-serif" }}
           >
-            {s}
+            <span className="flex-1">{s}</span>
+            <ChevronRight
+              size={16}
+              className="flex-shrink-0 text-primary/40 group-hover:text-white transition-colors"
+            />
           </button>
         ))}
       </div>
