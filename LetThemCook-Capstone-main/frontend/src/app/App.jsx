@@ -488,6 +488,19 @@ export default function App() {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [chatInput]);
 
+  // The height calc above can run before the custom font finishes loading,
+  // which under-measures wrapped text (e.g. the placeholder). Re-measure once
+  // fonts are ready so the box isn't left too short.
+  useEffect(() => {
+    if (!document.fonts?.ready) return;
+    document.fonts.ready.then(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    });
+  }, []);
+
   // Check the real backend, Ollama, model, and ChromaDB status.
   // The first check runs when the page opens, then repeats every 60 seconds.
   useEffect(() => {
@@ -566,8 +579,8 @@ export default function App() {
 
     const lower = pantry.map((p) => p.toLowerCase());
 
-    // Dedupe both against the existing pantry AND against duplicates
-    // within this same input (e.g. "fish, fish").
+    // Dedupe against the existing pantry AND against duplicates within this
+    // same input, e.g. typing "fish, fish" or "egg, egg, egg" in one go.
     const seen = new Set(lower);
     const newOnes = [];
     for (const part of parts) {
@@ -585,7 +598,7 @@ export default function App() {
 
     setPantry((prev) => [...prev, ...newOnes]);
     setInputVal("");
-};
+  };
 
   /**
    * Remove ingredient from pantry by index
@@ -949,18 +962,27 @@ export default function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.03, duration: 0.22 }}
+              whileHover={{ y: -4 }}
+              whileTap={{ y: -1, scale: 0.985 }}
               onClick={() => setSelected(r)}
-              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer group ${
+              className={`relative text-left p-4 rounded-2xl border transition-all duration-200 cursor-pointer group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                 hasPantry && r.tier === 1
-                  ? "bg-white border-emerald-200 hover:border-emerald-400 hover:shadow-md hover:shadow-emerald-100"
-                  : "bg-white border-stone-200 hover:border-stone-300 hover:shadow-md hover:shadow-stone-100"
+                  ? "bg-white border-emerald-200 hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-100 focus-visible:ring-emerald-400"
+                  : "bg-white border-stone-200 hover:border-stone-300 hover:shadow-lg hover:shadow-stone-200/70 focus-visible:ring-primary/50"
               }`}
               style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}
             >
+              {/* Accent edge that draws in on hover */}
+              <span
+                className={`pointer-events-none absolute left-0 top-0 h-full w-[3px] scale-y-0 group-hover:scale-y-100 transition-transform duration-300 origin-center ${
+                  hasPantry && r.tier === 1 ? "bg-emerald-400" : "bg-primary/60"
+                }`}
+              />
+
               <div className="flex items-start gap-3">
                 {/* Rank number */}
                 <span
-                  className="text-3xl font-bold leading-none flex-shrink-0 w-12 text-right transition-colors text-stone-200 group-hover:text-primary/20"
+                  className="text-3xl font-bold leading-none flex-shrink-0 w-12 text-right transition-all duration-200 text-stone-200 group-hover:text-primary/30 group-hover:scale-110"
                   style={{ fontFamily: "'Lora', serif" }}
                 >
                   {idx + 1}
@@ -1029,6 +1051,21 @@ export default function App() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* View recipe cue — slides in on hover/keyboard focus */}
+              <div
+                className={`flex items-center gap-1 justify-end mt-2 -mb-1 -mr-1 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 group-focus-visible:opacity-100 group-focus-visible:translate-x-0 transition-all duration-200 ${
+                  hasPantry && r.tier === 1 ? "text-emerald-600" : "text-primary"
+                }`}
+              >
+                <span
+                  className="text-[11px] font-semibold uppercase tracking-wide"
+                  style={{ fontFamily: "'DM Mono', monospace" }}
+                >
+                  View recipe
+                </span>
+                <ChevronRight size={13} className="transition-transform duration-200 group-hover:translate-x-0.5" />
               </div>
             </motion.button>
           ))}
@@ -1269,7 +1306,7 @@ export default function App() {
   className="no-scrollbar flex-1 bg-transparent text-base text-stone-800 placeholder:text-stone-400 resize-none outline-none leading-relaxed overflow-y-auto"
   style={{
     scrollbarWidth: "none",
-    minHeight: "24px",
+    minHeight: "44px",
     maxHeight: "120px",
     fontFamily: "'DM Sans', sans-serif",
   }}
