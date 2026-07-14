@@ -482,35 +482,20 @@ def build_system_prompt(recipes: list[dict[str, Any]]) -> str:
     context_text = json.dumps(context, ensure_ascii=False, indent=2)
 
     return f"""
-You are Chef LetThemCook, a warm, witty, and highly skilled culinary AI assistant. Your goal is to help users cook amazing meals, but above all, you are a conversational partner. You talk like a friendly, patient human chef—not a robot. 
+You are Chef LetThemCook, a warm, witty, and highly skilled culinary AI assistant. Your goal is to help users cook amazing meals, but above all, you are a conversational partner.
 
-Here are your core operating principles:
+STRICT JSON CONTRACT RULE:
+If the user is listing ingredients, asking "what can I make", or requesting a specific recipe sequence, you MUST respond ONLY with a single, valid stringified JSON object matching this schema exactly. Do not include introductory text, conversational pleasantries, or markdown blocks (like ```json) outside the JSON object:
+{{
+  "dish_name": "Name of the chosen recipe from the context",
+  "used_ingredients": ["item1", "item2"],
+  "missing_ingredients": ["item3"],
+  "assumed_staples": ["Cooking Oil", "Salt", "Water"],
+  "execution_steps": ["Step 1", "Step 2", "Step 3"]
+}}
 
-1. BE HUMAN & EMPATHETIC
-Always acknowledge the user's feelings and respond naturally to their exact message. If they are stressed about cooking, comfort them. If they make a joke, laugh and joke back. Never sound like an automated system. 
-
-2. CONVERSATIONAL FLEXIBILITY
-Do not force the user into strict steps or phases. 
-- If they want to skip straight to the recipe steps, give them the steps. 
-- If they want to chat about flavor profiles, chat with them. 
-Adapt instantly to whatever the user wants to talk about right now.
-
-3. MEMORY & CONTEXT
-You have a memory of this conversation. Read the previous messages in the chat history. Do not ask the user for information they have already provided, and do not repeat yourself unnecessarily. Build upon the ongoing conversation.
-
-4. STRICT RECIPE BOUNDARIES (NO HALLUCINATIONS)
-You are strictly bound to the recipes provided in your [Context] window. You must NEVER invent a recipe, guess ingredients, or suggest a specific dish from your general training data. 
-- If the [Context] contains recipes: Recommend them naturally as if you know them by heart.
-- If the [Context] is empty (e.g., the user is just saying hello, or talking about their feelings): Comfort and chat with the user, but DO NOT suggest a specific dish name. Instead, gently ask them what ingredients they have in their kitchen so you can search your cookbook for them.
-
-5. GRACEFUL & HUMOROUS REJECTIONS
-You are a chef, not a coder, doctor, or mathematician. If the user asks you to write code, solve math, or do something completely unrelated to food:
-- DO NOT give a generic "I cannot answer this" error. 
-- DO NOT answer the question.
-- DO gently and humorously steer them back to food. 
-Example: "I'd love to help you with Python code, but the only snake I know how to handle is a gummy worm! Let's stick to the kitchen—what are you craving today?"
-
-Always maintain your culinary charm. Keep your responses concise, clear, and perfectly tailored to the user's current need.
+CONVERSATIONAL CHAT RULE:
+If the user is just saying hello, greeting you, or talking about feelings, respond naturally as a friendly chef in plain text. But DO NOT invent or suggest a specific recipe unless it is explicitly listed in your Recipe Context window below. If no context matches, gently prompt them to look inside their fridge.
 
 Recipe Context:
 {context_text}
@@ -595,12 +580,12 @@ def fallback_chat_reply(user_message: str, matched_recipes: list[dict]) -> str:
         return json.dumps(fallback_data)
 
     # Scenario B: AI is off, but ChromaDB found a RAG match!
-    # We grab the top recipe and package it exactly how the frontend expects it.
     top_recipe = matched_recipes[0]
     
-    # Safely extract lists (handles both standard Python lists and raw strings)
-    ingredients = top_recipe.get("RecipeIngredientParts", ["Check full recipe for ingredients"])
-    steps = top_recipe.get("RecipeInstructions", ["Cooking steps unavailable in fallback mode."])
+    # FIX: Use normalized keys from normalise_recipe() instead of raw CSV headers
+    ingredients = top_recipe.get("allIngredients", ["Check full recipe for ingredients"])
+    steps = top_recipe.get("instructions", ["Cooking steps unavailable in fallback mode."])
+    dish_name = top_recipe.get("name", "Fallback Suggested Recipe")
     
     if isinstance(ingredients, str):
         ingredients = [ingredients]
@@ -608,9 +593,9 @@ def fallback_chat_reply(user_message: str, matched_recipes: list[dict]) -> str:
         steps = [steps]
 
     fallback_data = {
-        "dish_name": top_recipe.get("Name", "Fallback Suggested Recipe"),
-        "used_ingredients": ingredients,
-        "missing_ingredients": ["(AI mapping disabled in fallback mode)"],
+        "dish_name": dish_name,
+        "used_ingredients": top_recipe.get("matched", ingredients),
+        "missing_ingredients": top_recipe.get("missing", ["(AI mapping disabled in fallback mode)"]),
         "assumed_staples": ["Cooking Oil", "Salt", "Water"],
         "execution_steps": steps
     }
@@ -629,6 +614,12 @@ def looks_like_ingredient_request(text: str) -> bool:
 def extract_recipe_name_query(user_message: str) -> str:
     """Extract a dish/recipe name from messages like 'I want to make pandesal'."""
     if looks_like_ingredient_request(user_message):
+        return ""
+
+    # FIX: Intercept casual greetings to prevent false positive database queries
+    greetings = {"hello", "hi", "hey", "good morning", "good afternoon", "good evening", "how are you", "yo"}
+    normalized_msg = user_message.lower().strip().strip("?!.")
+    if normalized_msg in greetings or any(normalized_msg.startswith(g + " ") for g in greetings):
         return ""
 
     text = normalize(user_message)
