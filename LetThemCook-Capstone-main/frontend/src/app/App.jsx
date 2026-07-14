@@ -76,7 +76,7 @@ function MealBadge({ type }) {
   };
   return (
     <span
-      className={`inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2.5 py-0.5 rounded-full border ${styles[type]}`}
+      className={`inline-flex items-center text-[12px] font-semibold uppercase tracking-wide px-2.5 py-0.5 rounded-full border ${styles[type]}`}
       style={{ fontFamily: "'DM Mono', monospace" }}
     >
       {type}
@@ -90,10 +90,10 @@ function MealBadge({ type }) {
 function AvailableLabel() {
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full"
+      className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full"
       style={{ fontFamily: "'DM Mono', monospace" }}
     >
-      <CheckCircle2 size={10} />
+      <CheckCircle2 size={12} />
       {RECIPE_CARD_LABELS.availableOnly}
     </span>
   );
@@ -105,10 +105,10 @@ function AvailableLabel() {
 function AdditionalLabel() {
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-full"
+      className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-full"
       style={{ fontFamily: "'DM Mono', monospace" }}
     >
-      <PlusCircle size={10} />
+      <PlusCircle size={12} />
       {RECIPE_CARD_LABELS.withAdditional}
     </span>
   );
@@ -162,13 +162,13 @@ function RecipeModal({ r, onClose, hasPantry }) {
             className="absolute top-4 right-4 w-9 h-9 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center transition-colors group"
           >
             <X
-              size={15}
-              className="text-stone-400 group-hover:text-stone-600 transition-colors"
+              size={17}
+              className="text-stone-500 group-hover:text-stone-600 transition-colors"
             />
           </button>
 
           <h2
-            className="text-2xl font-bold text-stone-800 pr-4"
+            className="text-3xl font-bold text-stone-800 pr-4"
             style={{ fontFamily: "'Lora', serif" }}
           >
             {r.name}
@@ -187,12 +187,12 @@ function RecipeModal({ r, onClose, hasPantry }) {
 
        {/* Total time */}
 <div
-  className="flex justify-center mt-5 text-sm"
+  className="flex justify-center mt-5 text-base"
   style={{ fontFamily: "'DM Sans', sans-serif" }}
 >
   <div className="px-5 text-center">
     <p
-      className="text-[9px] uppercase tracking-[0.15em] text-stone-400 font-semibold"
+      className="text-[11px] uppercase tracking-[0.15em] text-stone-500 font-semibold"
       style={{ fontFamily: "'DM Mono', monospace" }}
     >
       {RECIPE_MODAL.totalTimeLabel}
@@ -205,9 +205,9 @@ function RecipeModal({ r, onClose, hasPantry }) {
 
           {/* Cooking method */}
           <div className="mt-4 inline-flex items-center gap-1.5 bg-stone-100 rounded-full px-4 py-1.5">
-            <UtensilsCrossed size={11} className="text-stone-400" />
+            <UtensilsCrossed size={13} className="text-stone-500" />
             <span
-              className="text-xs text-stone-500 font-medium"
+              className="text-sm text-stone-500 font-medium"
               style={{ fontFamily: "'DM Mono', monospace" }}
             >
               {r.cookingMethod}
@@ -225,10 +225,10 @@ function RecipeModal({ r, onClose, hasPantry }) {
             <div className="flex items-center gap-3 mb-5">
               <div className="flex-1 h-px bg-stone-100" />
               <h3
-                className="text-xs font-bold uppercase tracking-[0.22em] text-stone-500 flex items-center gap-1.5"
+                className="text-sm font-bold uppercase tracking-[0.22em] text-stone-500 flex items-center gap-1.5"
                 style={{ fontFamily: "'DM Mono', monospace" }}
               >
-                <Leaf size={11} /> {RECIPE_MODAL.ingredientsHeading}
+                <Leaf size={13} /> {RECIPE_MODAL.ingredientsHeading}
               </h3>
               <div className="flex-1 h-px bg-stone-100" />
             </div>
@@ -239,7 +239,7 @@ function RecipeModal({ r, onClose, hasPantry }) {
                 {r.allIngredients.map((ing, i) => (
                   <li
                     key={i}
-                    className="text-sm text-stone-600"
+                    className="text-base text-stone-600"
                     style={{ fontFamily: "'DM Sans', sans-serif" }}
                   >
                     {ing}
@@ -254,7 +254,7 @@ function RecipeModal({ r, onClose, hasPantry }) {
                 {r.availLines.map((ing, i) => (
                   <li
                     key={i}
-                    className="flex items-center gap-3 text-sm text-stone-700"
+                    className="flex items-center gap-3 text-base text-stone-700"
                     style={{ fontFamily: "'DM Sans', sans-serif" }}
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
@@ -264,7 +264,7 @@ function RecipeModal({ r, onClose, hasPantry }) {
                 {r.missingLines.map((ing, i) => (
                   <li
                     key={`m-${i}`}
-                    className="flex items-center gap-3 text-sm text-stone-500"
+                    className="flex items-center gap-3 text-base text-stone-500"
                     style={{ fontFamily: "'DM Sans', sans-serif" }}
                   >
                     <span className="w-2 h-2 rounded-full bg-stone-200 flex-shrink-0" />
@@ -281,9 +281,9 @@ function RecipeModal({ r, onClose, hasPantry }) {
                 {r.availLines.length > 0 && (
                   <div className="mb-4">
                     <div className="inline-flex items-center gap-1.5 mb-3">
-                      <CheckCircle2 size={12} className="text-emerald-500" />
+                      <CheckCircle2 size={14} className="text-emerald-500" />
                       <span
-                        className="text-[10px] font-bold uppercase tracking-wide text-emerald-600"
+                        className="text-[12px] font-bold uppercase tracking-wide text-emerald-600"
                         style={{ fontFamily: "'DM Mono', monospace" }}
                       >
                         {RECIPE_MODAL.availableSubLabel}
@@ -293,7 +293,7 @@ function RecipeModal({ r, onClose, hasPantry }) {
                       {r.availLines.map((ing, i) => (
                         <li
                           key={i}
-                          className="flex items-center gap-3 text-sm text-stone-700"
+                          className="flex items-center gap-3 text-base text-stone-700"
                           style={{ fontFamily: "'DM Sans', sans-serif" }}
                         >
                           <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
@@ -309,9 +309,9 @@ function RecipeModal({ r, onClose, hasPantry }) {
                   <div className="flex items-center gap-3 my-4">
                     <div className="flex-1 h-px bg-orange-100" />
                     <div className="flex items-center gap-1.5">
-                      <PlusCircle size={10} className="text-orange-400" />
+                      <PlusCircle size={12} className="text-orange-400" />
                       <span
-                        className="text-[10px] font-bold uppercase tracking-wide text-orange-500"
+                        className="text-[12px] font-bold uppercase tracking-wide text-orange-500"
                         style={{ fontFamily: "'DM Mono', monospace" }}
                       >
                         {RECIPE_MODAL.additionalDivider}
@@ -327,7 +327,7 @@ function RecipeModal({ r, onClose, hasPantry }) {
                     {r.missingLines.map((ing, i) => (
                       <li
                         key={i}
-                        className="flex items-center gap-3 text-sm text-stone-500"
+                        className="flex items-center gap-3 text-base text-stone-500"
                         style={{ fontFamily: "'DM Sans', sans-serif" }}
                       >
                         <span className="w-2 h-2 rounded-full bg-orange-300 flex-shrink-0" />
@@ -344,13 +344,13 @@ function RecipeModal({ r, onClose, hasPantry }) {
           {hasPantry && (r.unusedPantry || []).length > 0 && (
             <section className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-4">
               <h3
-                className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700 mb-2"
+                className="text-[12px] font-bold uppercase tracking-[0.18em] text-amber-700 mb-2"
                 style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 Unused pantry ingredients
               </h3>
               <p
-                className="text-xs text-stone-500 mb-2"
+                className="text-sm text-stone-500 mb-2"
                 style={{ fontFamily: "'DM Sans', sans-serif" }}
               >
                 These items are in your pantry but are not needed for this recipe.
@@ -359,7 +359,7 @@ function RecipeModal({ r, onClose, hasPantry }) {
                 {r.unusedPantry.map((ingredient) => (
                   <span
                     key={ingredient}
-                    className="text-xs rounded-full border border-amber-200 bg-white px-2.5 py-1 text-amber-700"
+                    className="text-sm rounded-full border border-amber-200 bg-white px-2.5 py-1 text-amber-700"
                     style={{ fontFamily: "'DM Mono', monospace" }}
                   >
                     {ingredient}
@@ -374,10 +374,10 @@ function RecipeModal({ r, onClose, hasPantry }) {
             <div className="flex items-center gap-3 mb-5">
               <div className="flex-1 h-px bg-stone-100" />
               <h3
-                className="text-xs font-bold uppercase tracking-[0.22em] text-stone-500 flex items-center gap-1.5"
+                className="text-sm font-bold uppercase tracking-[0.22em] text-stone-500 flex items-center gap-1.5"
                 style={{ fontFamily: "'DM Mono', monospace" }}
               >
-                <Clock size={11} /> {RECIPE_MODAL.instructionsHeading}
+                <Clock size={13} /> {RECIPE_MODAL.instructionsHeading}
               </h3>
               <div className="flex-1 h-px bg-stone-100" />
             </div>
@@ -385,11 +385,11 @@ function RecipeModal({ r, onClose, hasPantry }) {
               {r.instructions.map((step, i) => (
                 <li
                   key={i}
-                  className="flex gap-3.5 text-sm text-stone-600 leading-relaxed"
+                  className="flex gap-3.5 text-base text-stone-600 leading-relaxed"
                   style={{ fontFamily: "'DM Sans', sans-serif" }}
                 >
                   <span
-                    className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5"
+                    className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 border border-primary/20 text-primary text-[12px] font-bold flex items-center justify-center mt-0.5"
                     style={{ fontFamily: "'DM Mono', monospace" }}
                   >
                     {i + 1}
@@ -465,7 +465,7 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [mobileTab, setMobileTab] = useState("recipes");
   const [ranked, setRanked] = useState([]);
-  const [showQuickPrompts, setShowQuickPrompts] = useState(true);
+  const [showQuickPrompts, setShowQuickPrompts] = useState(false);
   const [quickPrompts, setQuickPrompts] = useState(() => buildQuickPrompts([]));
   const [recipeSource, setRecipeSource] = useState("checking");
   const [systemHealth, setSystemHealth] = useState(null);
@@ -710,17 +710,17 @@ export default function App() {
       <header className="flex-shrink-0 px-5 lg:px-7 pt-5 pb-4 bg-white border-b border-stone-100 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-md shadow-primary/25">
-            <ChefHat size={18} className="text-white" />
+            <ChefHat size={20} className="text-white" />
           </div>
           <div>
             <h1
-              className="text-xl font-bold text-stone-800 leading-none"
+              className="text-2xl font-bold text-stone-800 leading-none"
               style={{ fontFamily: "'Lora', serif" }}
             >
               {APP_IDENTITY.name}
             </h1>
             <p
-              className="text-[10px] text-stone-400 tracking-[0.18em] uppercase mt-0.5"
+              className="text-[12px] text-stone-500 tracking-[0.18em] uppercase mt-0.5"
               style={{ fontFamily: "'DM Mono', monospace" }}
             >
               {APP_IDENTITY.tagline}
@@ -732,7 +732,7 @@ export default function App() {
           >
             <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus.dot} animate-pulse`} />
             <span
-              className={`text-[10px] font-medium ${connectionStatus.text}`}
+              className={`text-[12px] font-medium ${connectionStatus.text}`}
               style={{ fontFamily: "'DM Mono', monospace" }}
             >
               {connectionStatus.label}
@@ -744,13 +744,13 @@ export default function App() {
       {/* Ingredient input */}
       <div className="flex-shrink-0 px-5 lg:px-7 pt-5 pb-4 bg-white border-b border-stone-100">
         <label
-          className="block text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400 mb-1"
+          className="block text-[13px] font-bold uppercase tracking-[0.18em] text-stone-500 mb-1"
           style={{ fontFamily: "'DM Mono', monospace" }}
         >
           {INGREDIENT_INPUT.label}
         </label>
         <p
-          className="text-[11px] text-stone-400 mb-2.5"
+          className="text-[13px] text-stone-500 mb-2.5"
           style={{ fontFamily: "'DM Sans', sans-serif" }}
         >
           {INGREDIENT_INPUT.hint}
@@ -763,15 +763,15 @@ export default function App() {
             onChange={(e) => setInputVal(sanitizeIngredientInput(e.target.value))}  
               onKeyDown={handleIngKey}
               placeholder={INGREDIENT_INPUT.placeholder}
-              className="w-full text-sm bg-stone-50 border border-stone-200 rounded-xl px-4 py-2.5 text-stone-800 placeholder:text-stone-300 outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/10 transition-all"
+              className="w-full text-base bg-stone-50 border border-stone-200 rounded-xl px-4 py-2.5 text-stone-800 placeholder:text-stone-400 outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/10 transition-all"
             />
           </div>
           <button
             onClick={addIngredient}
-            className="flex-shrink-0 h-10 px-5 rounded-xl bg-primary text-white text-[11px] font-bold uppercase tracking-wider hover:bg-primary/90 active:scale-95 transition-all shadow-sm shadow-primary/25 flex items-center gap-1.5"
+            className="flex-shrink-0 h-10 px-5 rounded-xl bg-primary text-white text-[13px] font-bold uppercase tracking-wider hover:bg-primary/90 active:scale-95 transition-all shadow-sm shadow-primary/25 flex items-center gap-1.5"
             style={{ fontFamily: "'DM Mono', monospace" }}
           >
-            <Plus size={14} /> {INGREDIENT_INPUT.addButton}
+            <Plus size={16} /> {INGREDIENT_INPUT.addButton}
           </button>
         </div>
 
@@ -790,7 +790,7 @@ export default function App() {
                   key={ing}
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex-shrink-0"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold flex-shrink-0"
                   style={{ fontFamily: "'DM Mono', monospace" }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -800,7 +800,7 @@ export default function App() {
                     className="hover:text-red-500 transition-colors ml-0.5 w-3.5 h-3.5 flex items-center justify-center"
                     title="Remove ingredient"
                   >
-                    <X size={10} />
+                    <X size={12} />
                   </button>
                 </motion.span>
               ))}
@@ -808,7 +808,7 @@ export default function App() {
             {/* Show count + clear all */}
             <div className="flex items-center justify-between mt-1.5">
               <span
-                className="text-[10px] text-stone-400"
+                className="text-[12px] text-stone-500"
                 style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 {pantry.length}{" "}
@@ -822,7 +822,7 @@ export default function App() {
               </span>
               <button
                 onClick={() => setPantry([])}
-                className="text-[10px] text-red-400 hover:text-red-600 transition-colors font-medium"
+                className="text-[12px] text-red-400 hover:text-red-600 transition-colors font-medium"
                 style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 {INGREDIENT_INPUT.clearAll}
@@ -835,7 +835,7 @@ export default function App() {
       {/* Filters + Search bar */}
       <div className="flex-shrink-0 px-5 lg:px-7 py-3 bg-white border-b border-stone-100 flex flex-wrap items-center gap-2">
         <span
-          className="text-[10px] text-stone-400 uppercase tracking-wider mr-1 hidden sm:block"
+          className="text-[12px] text-stone-500 uppercase tracking-wider mr-1 hidden sm:block"
           style={{ fontFamily: "'DM Mono', monospace" }}
         >
           {SEARCH_BAR.mealLabel}
@@ -844,7 +844,7 @@ export default function App() {
           <button
             key={f}
             onClick={() => setActiveFilter(f)}
-            className={`h-8 px-3.5 rounded-full text-[11px] font-bold uppercase tracking-wider border transition-all ${
+            className={`h-9 px-3.5 rounded-full text-[13px] font-bold uppercase tracking-wider border transition-all ${
               activeFilter === f
                 ? "bg-primary text-white border-primary shadow-sm"
                 : "border-stone-200 text-stone-500 hover:border-primary/50 hover:text-primary bg-stone-50"
@@ -856,15 +856,15 @@ export default function App() {
         ))}
         <div className="flex-1 min-w-[110px] relative">
   <Search
-    size={13}
-    className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none"
+    size={15}
+    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500 pointer-events-none"
   />
   <input
     type="text"
     value={nameSearch}
     onChange={(e) => setNameSearch(e.target.value)}
     placeholder={SEARCH_BAR.placeholder}
-    className="w-full text-xs bg-white border-2 border-stone-300 rounded-full pl-8 pr-3 h-8 text-stone-700 placeholder:text-stone-400 outline-none shadow-sm hover:border-stone-400 focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+    className="w-full text-sm bg-white border-2 border-stone-300 rounded-full pl-9 pr-3 h-9 text-stone-700 placeholder:text-stone-500 outline-none shadow-sm hover:border-stone-400 focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
   />
 </div>
       </div>
@@ -873,28 +873,28 @@ export default function App() {
       {hasPantry && (
         <div className="flex-shrink-0 px-5 lg:px-7 py-2.5 bg-stone-50/80 border-b border-stone-100 flex flex-wrap items-center gap-3">
           <span
-            className="text-[10px] text-stone-500"
+            className="text-[12px] text-stone-500"
             style={{ fontFamily: "'DM Mono', monospace" }}
           >
             {STATUS_BAR.rankedPrefix}
           </span>
           <span
-            className="inline-flex items-center gap-1 text-[10px] text-emerald-600"
+            className="inline-flex items-center gap-1 text-[12px] text-emerald-600"
             style={{ fontFamily: "'DM Mono', monospace" }}
           >
-            <CheckCircle2 size={10} /> {ranked.filter((r) => r.tier === 1).length}{" "}
+            <CheckCircle2 size={12} /> {ranked.filter((r) => r.tier === 1).length}{" "}
             {STATUS_BAR.perfect}
           </span>
           <span
-            className="inline-flex items-center gap-1 text-[10px] text-orange-500"
+            className="inline-flex items-center gap-1 text-[12px] text-orange-500"
             style={{ fontFamily: "'DM Mono', monospace" }}
           >
-            <PlusCircle size={10} />{" "}
+            <PlusCircle size={12} />{" "}
             {ranked.filter((r) => r.tier !== 1).length}{" "}
             {STATUS_BAR.withAdditional}
           </span>
           <span
-            className="ml-auto text-[10px] text-stone-400"
+            className="ml-auto text-[12px] text-stone-500"
             style={{ fontFamily: "'DM Mono', monospace" }}
           >
             {ranked.length} {STATUS_BAR.recipesSuffix}
@@ -916,13 +916,13 @@ export default function App() {
             <span className="text-2xl mt-0.5">💡</span>
             <div>
               <p
-                className="text-sm font-semibold text-stone-700"
+                className="text-base font-semibold text-stone-700"
                 style={{ fontFamily: "'Lora', serif" }}
               >
                 {HOW_IT_WORKS.title}
               </p>
               <p
-                className="text-xs text-stone-500 mt-0.5 leading-relaxed"
+                className="text-sm text-stone-500 mt-0.5 leading-relaxed"
                 style={{ fontFamily: "'DM Sans', sans-serif" }}
               >
                 {HOW_IT_WORKS.body}
@@ -957,7 +957,7 @@ export default function App() {
 
                 <div className="flex-1 min-w-0">
                   <p
-                    className="font-semibold text-stone-800 group-hover:text-primary transition-colors leading-snug text-sm"
+                    className="font-semibold text-stone-800 group-hover:text-primary transition-colors leading-snug text-base"
                     style={{ fontFamily: "'Lora', serif" }}
                   >
                     {r.name}
@@ -980,13 +980,13 @@ export default function App() {
                     <div className="mt-3">
                       <div className="flex justify-between items-center mb-1">
                         <span
-                          className="text-[9px] text-stone-400 uppercase tracking-wide"
+                          className="text-[11px] text-stone-500 uppercase tracking-wide"
                           style={{ fontFamily: "'DM Mono', monospace" }}
                         >
                           {RECIPE_CARD_LABELS.matchLabel}
                         </span>
                         <span
-                          className="text-[9px] text-stone-500 font-semibold"
+                          className="text-[11px] text-stone-500 font-semibold"
                           style={{ fontFamily: "'DM Mono', monospace" }}
                         >
                           {r.matched.length}/{r.coreIngredients.length}
@@ -1008,7 +1008,7 @@ export default function App() {
                       </div>
                       {r.missing.length > 0 && (
                         <p
-                          className="text-[9px] text-orange-500 mt-1 truncate"
+                          className="text-[11px] text-orange-500 mt-1 truncate"
                           style={{ fontFamily: "'DM Mono', monospace" }}
                         >
                           Still need: {r.missing.slice(0, 3).join(", ")}
@@ -1024,7 +1024,7 @@ export default function App() {
         </div>
 
         {ranked.length === 0 && (
-          <div className="text-center py-16 text-stone-400">
+          <div className="text-center py-16 text-stone-500">
             <p className="text-4xl mb-3">{EMPTY_STATE.icon}</p>
             <p
               className="font-semibold text-stone-500"
@@ -1033,7 +1033,7 @@ export default function App() {
               {EMPTY_STATE.title}
             </p>
             <p
-              className="text-sm mt-1"
+              className="text-base mt-1"
               style={{ fontFamily: "'DM Sans', sans-serif" }}
             >
               {EMPTY_STATE.body}
@@ -1110,11 +1110,11 @@ export default function App() {
       <header className="flex-shrink-0 px-5 py-4 bg-white border-b border-stone-100 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
-            <ChefHat size={16} className="text-primary" />
+            <ChefHat size={18} className="text-primary" />
           </div>
           <div>
             <p
-              className="text-sm font-semibold text-stone-800"
+              className="text-base font-semibold text-stone-800"
               style={{ fontFamily: "'Lora', serif" }}
             >
               {CHAT_HEADER.name}
@@ -1122,7 +1122,7 @@ export default function App() {
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus.dot} animate-pulse`} />
               <p
-                className={`text-[9px] uppercase tracking-widest ${connectionStatus.text}`}
+                className={`text-[11px] uppercase tracking-widest ${connectionStatus.text}`}
                 style={{ fontFamily: "'DM Mono', monospace" }}
               >
                 {isTyping ? (
@@ -1156,11 +1156,11 @@ export default function App() {
           >
             {msg.role === "assistant" && (
               <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mb-0.5">
-                <ChefHat size={12} className="text-primary" />
+                <ChefHat size={14} className="text-primary" />
               </div>
             )}
             <div
-  className={`max-w-[85%] px-4 py-3 text-sm leading-relaxed shadow-sm whitespace-pre-line break-words ${
+  className={`max-w-[85%] px-4 py-3 text-base leading-relaxed shadow-sm whitespace-pre-line break-words ${
     msg.role === "user"
       ? "bg-primary text-white rounded-2xl rounded-br-md shadow-primary/20"
       : "bg-white text-stone-700 rounded-2xl rounded-bl-md border border-stone-100"
@@ -1182,7 +1182,7 @@ export default function App() {
             className="flex items-end gap-2 justify-start"
           >
             <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <ChefHat size={12} className="text-primary" />
+              <ChefHat size={14} className="text-primary" />
             </div>
             <div className="bg-white border border-stone-100 rounded-2xl rounded-bl-md shadow-sm">
               <TypingDots />
@@ -1193,18 +1193,18 @@ export default function App() {
       </div>
 
 {/* Quick prompts */}
-<div className="flex-shrink-0 px-4 pb-3">
-  <div className="rounded-2xl bg-primary/[0.06] border border-primary/15 p-3.5">
-    <div className="w-full flex items-center gap-2 mb-3">
+<div className="flex-shrink-0 px-4 pb-2">
+  <div className="rounded-xl bg-primary/[0.06] border border-primary/15 p-2">
+    <div className="w-full flex items-center gap-1.5">
       <button
         onClick={() => setShowQuickPrompts((v) => !v)}
-        className="flex-1 flex items-center gap-2 text-sm font-semibold text-primary transition-colors"
+        className="flex-1 flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors"
         style={{ fontFamily: "'DM Sans', sans-serif" }}
       >
-        <Sparkles size={17} className="text-accent flex-shrink-0" />
-        <span>Not sure what to ask? Try one of these</span>
+        <Sparkles size={15} className="text-accent flex-shrink-0" />
+        <span>Not sure what to ask?</span>
         <ChevronDown
-          size={16}
+          size={15}
           className={`ml-auto flex-shrink-0 transition-transform duration-200 ${
             showQuickPrompts ? "" : "-rotate-90"
           }`}
@@ -1217,24 +1217,24 @@ export default function App() {
             setQuickPrompts(buildQuickPrompts(pantry, selected));
           }}
           title="Show different suggestions"
-          className="flex-shrink-0 p-1.5 rounded-full text-primary/70 hover:text-primary hover:bg-primary/10 transition-colors"
+          className="flex-shrink-0 p-1 rounded-full text-primary/70 hover:text-primary hover:bg-primary/10 transition-colors"
         >
-          <RefreshCw size={16} />
+          <RefreshCw size={14} />
         </button>
       )}
     </div>
     {showQuickPrompts && (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5 mt-2">
         {quickPrompts.map((s) => (
           <button
             key={s}
             onClick={() => sendMsg(s)}
-            className="w-full flex items-center gap-2.5 text-left text-sm font-medium leading-snug px-4 py-3 rounded-xl border border-primary/20 bg-white text-stone-700 hover:bg-primary hover:text-white hover:border-primary transition-all shadow-sm group"
+            className="w-full flex items-center gap-2 text-left text-sm font-medium leading-snug px-3 py-2 rounded-lg border border-primary/20 bg-white text-stone-700 hover:bg-primary hover:text-white hover:border-primary transition-all shadow-sm group"
             style={{ fontFamily: "'DM Sans', sans-serif" }}
           >
             <span className="flex-1">{s}</span>
             <ChevronRight
-              size={16}
+              size={14}
               className="flex-shrink-0 text-primary/40 group-hover:text-white transition-colors"
             />
           </button>
@@ -1243,6 +1243,7 @@ export default function App() {
     )}
   </div>
 </div>
+
 
       {/* Chat input */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
@@ -1254,7 +1255,7 @@ export default function App() {
   onKeyDown={handleChatKey}
   placeholder={CHAT_INPUT_PLACEHOLDER}
   rows={1}
-  className="no-scrollbar flex-1 bg-transparent text-sm text-stone-800 placeholder:text-stone-300 resize-none outline-none leading-relaxed overflow-y-auto"
+  className="no-scrollbar flex-1 bg-transparent text-base text-stone-800 placeholder:text-stone-400 resize-none outline-none leading-relaxed overflow-y-auto"
   style={{
     scrollbarWidth: "none",
     minHeight: "24px",
@@ -1267,11 +1268,11 @@ export default function App() {
             disabled={!chatInput.trim() || isTyping}
             className="flex-shrink-0 w-9 h-9 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-95 shadow-sm shadow-primary/25"
           >
-            <Send size={14} className="text-white translate-x-px" />
+            <Send size={16} className="text-white translate-x-px" />
           </button>
         </div>
         <p
-          className="text-center text-[9px] text-stone-300 mt-1.5 tracking-wide"
+          className="text-center text-[11px] text-stone-400 mt-1.5 tracking-wide"
           style={{ fontFamily: "'DM Mono', monospace" }}
         >
           {CHAT_INPUT_HINT}
@@ -1306,14 +1307,14 @@ export default function App() {
             <button
               key={id}
               onClick={() => setMobileTab(id)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-bold uppercase tracking-wider transition-colors border-b-2 ${
+              className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-base font-bold uppercase tracking-wider transition-colors border-b-2 ${
                 mobileTab === id
                   ? "text-primary border-primary"
-                  : "text-stone-400 border-transparent"
+                  : "text-stone-500 border-transparent"
               }`}
               style={{ fontFamily: "'DM Mono', monospace" }}
             >
-              <Icon size={15} /> {label}
+              <Icon size={17} /> {label}
             </button>
           ))}
         </div>
