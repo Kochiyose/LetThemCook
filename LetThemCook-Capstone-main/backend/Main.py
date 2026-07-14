@@ -990,7 +990,7 @@ def recipe_detail_reply(recipe: dict[str, Any]) -> str:
         f"Here's a recipe you can try: {recipe.get('name')} ✅\n\n"
         f"Estimated time: about {recipe.get('totalTime', 'N/A')}\n"
         f"Main ingredients: {ingredient_text}\n\n"
-        f"First steps:\n{step_text}"
+        f"Instructions:\n{step_text}"
     )
 
     return reply
