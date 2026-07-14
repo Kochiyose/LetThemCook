@@ -11,8 +11,7 @@ def main() -> int:
         print("ChromaDB rebuild stopped because CSV validation failed.")
         return 1
 
-    # Importing Main initializes the persistent vector store, so it happens only
-    # after the source database is known to be valid.
+    # Import Main only after the CSV passes validation.
     from Main import RECIPES, VECTOR_STORE
 
     total = VECTOR_STORE.rebuild(RECIPES)

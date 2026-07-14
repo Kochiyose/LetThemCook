@@ -22,7 +22,7 @@ export const AI_FALLBACK_REPLIES = [
   "A recipe ranks lower when it needs ingredients you don't currently have. But here's the good news — the available-ingredients-only recipes above it are just as delicious and ready to cook right now!",
   "Pro tip for storing herbs: wrap them in a slightly damp paper towel, place in a zip-lock bag, and refrigerate. They'll last 1–2 weeks this way. Hard cheeses freeze beautifully. Onions and garlic prefer a cool, dry, dark spot.",
   "You can absolutely scale recipes proportionally. If you only have half the protein a recipe calls for, halve the aromatics and fat too — this keeps the flavour balance right and prevents the dish from tasting off.",
-  "This system uses a RAG (Retrieval-Augmented Generation) approach, which means every recipe suggestion is grounded in a real, verified database — so no made-up recipes or impossible ingredient combinations!",
+  "I’ll keep recipe suggestions practical and focused on the ingredients you have available.",
 ];
 
 

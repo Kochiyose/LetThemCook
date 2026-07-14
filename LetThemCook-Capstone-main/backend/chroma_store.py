@@ -110,8 +110,7 @@ class RecipeVectorStore:
 
         query_args: dict[str, Any] = {
             "query_texts": [". ".join(query_parts)],
-            # Pantry ranking may inspect up to 500 candidates, while callers such
-            # as the health check can request a much smaller query.
+            # Recipe search can use up to 500 results. Health checks can use fewer.
             "n_results": min(max(1, int(limit)), self.count()),
             "include": ["distances"],
         }

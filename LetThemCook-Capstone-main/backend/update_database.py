@@ -1,8 +1,6 @@
-"""Validate the LetThemCook CSV before rebuilding ChromaDB.
+"""Check the LetThemCook CSV before building ChromaDB.
 
-Run this file before ``build_chroma.py``. It intentionally does not rename or
-silently rewrite the database; confirmed data corrections remain reviewable in
-version control.
+This script reports CSV errors. It does not rename or edit the database file.
 """
 
 from __future__ import annotations

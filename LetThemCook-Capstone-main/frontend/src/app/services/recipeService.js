@@ -62,11 +62,11 @@ export async function getAiRecipe(ingredientsArray) {
   } catch (error) {
     console.error("AI Generation Error:", error);
     return {
-      dish_name: "System Offline / Error",
+      dish_name: "Kitchen Assistant Unavailable",
       used_ingredients: [],
       missing_ingredients: [],
       assumed_staples: [],
-      execution_steps: ["The AI backend is currently unreachable or timed out. Please ensure Ollama and FastAPI are running."],
+      execution_steps: ["I'm having trouble responding right now. Please try again in a moment."],
       source: "error",
     };
   }
@@ -87,7 +87,7 @@ export async function chatWithChef(userMessage, history = []) {
     return data.chef_reply || data.message || "Kitchen AI did not return a reply.";
   } catch (error) {
     console.error("Chat Error:", error);
-    return "The AI backend is currently unreachable.";
+    return "I'm having trouble responding right now. Please try again in a moment.";
   }
 }
 
