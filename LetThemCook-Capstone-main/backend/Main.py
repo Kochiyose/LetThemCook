@@ -63,7 +63,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip(
 OLLAMA_URL = os.getenv("OLLAMA_URL", f"{OLLAMA_BASE_URL}/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 USE_OLLAMA = env_flag("USE_OLLAMA", True)
-OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "100"))
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180"))
 
 app = FastAPI(title="LetThemCook Backend API", version="1.3.0")
 
@@ -385,6 +385,7 @@ def search_recipe_database(
                 meal_filter=meal_filter,
                 name_query=name_query,
                 max_time_minutes=max_time_minutes,
+                limit=500,
             )
         except Exception as error:
             # Do not crash the whole API when Ollama or the embedding model is off.
@@ -410,6 +411,27 @@ def search_recipe_database(
     if max_time_minutes is not None:
         recipes = [recipe for recipe in recipes if recipe.get("timeMinutes", 999) <= max_time_minutes]
 
+    if name_query.strip():
+        query = normalize(name_query)
+        query_tokens = [token for token in query.split() if len(token) > 1]
+        title_matches = [
+            recipe
+            for recipe in recipes
+            if query in normalize(recipe.get("name", ""))
+            or (
+                query_tokens
+                and all(token in normalize(recipe.get("name", "")) for token in query_tokens)
+            )
+        ]
+        if title_matches:
+            recipes = title_matches
+        elif candidate_ids:
+            # Keep only the strongest semantic alternatives when there is no
+            # literal title match.
+            recipes = recipes[:50]
+        else:
+            recipes = []
+
     ranked = [recipe_matches(recipe, pantry) for recipe in recipes]
 
     if pantry:
@@ -417,9 +439,10 @@ def search_recipe_database(
         ranked = [item for item in ranked if item.get("matched")]
         ranked.sort(
             key=lambda item: (
-                -len(item.get("matched", [])),
+                item.get("tier", 3),
                 -item.get("score", 0),
                 len(item.get("missing", [])),
+                -len(item.get("matched", [])),
                 item.get("timeMinutes", 999),
                 item.get("name", ""),
             )
@@ -437,12 +460,16 @@ def search_recipe_database(
 
 def extract_pantry_from_message(message: str) -> list[str]:
     message = message.lower()
-    for prefix in ["with", "using", "i have", "ingredients are", "ingredients:"]:
-        if prefix in message:
-            message = message.split(prefix, 1)[1]
-            break
+    prefix_positions = [
+        (message.find(prefix), prefix)
+        for prefix in ["i have", "ingredients are", "ingredients:", "using", "with"]
+        if prefix in message
+    ]
+    if prefix_positions:
+        _, first_prefix = min(prefix_positions, key=lambda item: item[0])
+        message = message.split(first_prefix, 1)[1]
 
-    pieces = re.split(r",| and |\+|/|\n", message)
+    pieces = re.split(r",| and | with |\+|/|\n", message)
     cleaned = []
     ignored = {"what can i make", "can i make", "make", "cook", "recipe", "recipes", "food"}
     for piece in pieces:
@@ -464,12 +491,33 @@ NO_MATCH_REPLY = (
 
 
 
-def build_system_prompt(recipes: list[dict[str, Any]]) -> str:
+STRUCTURED_RECIPE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dish_name": {"type": "string"},
+        "used_ingredients": {"type": "array", "items": {"type": "string"}},
+        "missing_ingredients": {"type": "array", "items": {"type": "string"}},
+        "assumed_staples": {"type": "array", "items": {"type": "string"}},
+        "execution_steps": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": [
+        "dish_name",
+        "used_ingredients",
+        "missing_ingredients",
+        "assumed_staples",
+        "execution_steps",
+    ],
+    "additionalProperties": False,
+}
+
+
+def build_system_prompt(recipes: list[dict[str, Any]], structured: bool = False) -> str:
     context = []
     for recipe in recipes[:3]:
         context.append(
             {
                 "name": recipe.get("name"),
+                "category": recipe.get("sourceCategory"),
                 "totalTime": recipe.get("totalTime"),
                 "allIngredients": recipe.get("allIngredients", []),
                 "matched": recipe.get("matched", []),
@@ -481,21 +529,37 @@ def build_system_prompt(recipes: list[dict[str, Any]]) -> str:
 
     context_text = json.dumps(context, ensure_ascii=False, indent=2)
 
+    if structured:
+        response_rule = """
+STRUCTURED RECIPE OUTPUT:
+- Select one recipe from Recipe Context.
+- Return only one JSON object that follows the supplied schema.
+- Copy the selected database recipe name exactly.
+- Do not add ingredients or cooking steps that are absent from that record.
+- Do not wrap the JSON in Markdown or add conversational text.
+""".strip()
+    else:
+        response_rule = """
+CONVERSATIONAL OUTPUT:
+- Reply in clear, friendly plain text. Never display raw JSON in chat.
+- When Recipe Context contains matches, base every recipe name, ingredient,
+  cooking time, and instruction on one of those records.
+- Do not merge multiple database recipes or invent a replacement recipe.
+- When Recipe Context is empty, you may answer general cooking, storage, or
+  substitution questions, but do not claim that a specific recipe is in the
+  LetThemCook database.
+""".strip()
+
     return f"""
-You are Chef LetThemCook, a warm, witty, and highly skilled culinary AI assistant. Your goal is to help users cook amazing meals, but above all, you are a conversational partner.
+You are Chef LetThemCook, a warm and skilled culinary assistant.
 
-STRICT JSON CONTRACT RULE:
-If the user is listing ingredients, asking "what can I make", or requesting a specific recipe sequence, you MUST respond ONLY with a single, valid stringified JSON object matching this schema exactly. Do not include introductory text, conversational pleasantries, or markdown blocks (like ```json) outside the JSON object:
-{{
-  "dish_name": "Name of the chosen recipe from the context",
-  "used_ingredients": ["item1", "item2"],
-  "missing_ingredients": ["item3"],
-  "assumed_staples": ["Cooking Oil", "Salt", "Water"],
-  "execution_steps": ["Step 1", "Step 2", "Step 3"]
-}}
+DATABASE GROUNDING RULES:
+- Recipe Context is the only authority for specific LetThemCook recipes.
+- Treat every context field as read-only database evidence.
+- Never invent a database recipe, ingredient, cooking time, or instruction.
+- If the requested recipe is absent, say that no database match was found.
 
-CONVERSATIONAL CHAT RULE:
-If the user is just saying hello, greeting you, or talking about feelings, respond naturally as a friendly chef in plain text. But DO NOT invent or suggest a specific recipe unless it is explicitly listed in your Recipe Context window below. If no context matches, gently prompt them to look inside their fridge.
+{response_rule}
 
 Recipe Context:
 {context_text}
@@ -516,12 +580,13 @@ def call_ollama(
     user_message: str,
     recipes: list[dict[str, Any]],
     history: list[ChatMessage] | None = None,
+    structured: bool = False,
 ) -> str | None:
     """Send a grounded chat request to the local Llama model."""
     if not USE_OLLAMA:
         return None
 
-    system_prompt = build_system_prompt(recipes)
+    system_prompt = build_system_prompt(recipes, structured=structured)
 
     # Ollama chat uses one ordered message list. The system prompt comes first,
     # then the previous conversation, then the newest user message.
@@ -530,24 +595,34 @@ def call_ollama(
         messages.append({"role": message.role, "content": message.content})
     messages.append({"role": "user", "content": user_message})
 
+    request_payload: dict[str, Any] = {
+        "model": OLLAMA_MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            # Lower randomness helps Llama follow the retrieved recipe exactly.
+            "temperature": 0.0 if structured else 0.2,
+            "top_p": 0.85,
+        },
+    }
+    if structured:
+        request_payload["format"] = STRUCTURED_RECIPE_SCHEMA
+
     try:
         response = requests.post(
             get_ollama_chat_url(),
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": messages,
-                "stream": False,
-                "options": {
-                    # Lower randomness helps Llama follow the retrieved recipe exactly.
-                    "temperature": 0.2,
-                    "top_p": 0.85,
-                },
-            },
+            json=request_payload,
             timeout=OLLAMA_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         data = response.json()
         reply = (data.get("message", {}).get("content") or "").strip()
+        if structured and reply:
+            grounded_payload = validate_structured_recipe_reply(reply, recipes)
+            if grounded_payload is None:
+                print("Ollama returned recipe JSON that was not grounded in the retrieved records.")
+                return None
+            return json.dumps(grounded_payload, ensure_ascii=False)
         return reply or None
     except requests.RequestException as error:
         # Returning None lets the existing database fallback answer safely.
@@ -557,58 +632,131 @@ def call_ollama(
         print(f"Ollama returned an invalid response: {error}")
         return None
 
+
+def structured_recipe_payload(recipe: dict[str, Any]) -> dict[str, Any]:
+    """Build the frontend recipe contract exclusively from one database row."""
+    ingredients = [str(item) for item in recipe.get("allIngredients", []) if str(item).strip()]
+    steps = [str(item) for item in recipe.get("instructions", []) if str(item).strip()]
+    matched = [str(item) for item in recipe.get("matched", []) if str(item).strip()]
+    missing = [str(item) for item in recipe.get("missing", []) if str(item).strip()]
+    staples = [item for item in ingredients if is_basic_staple(item)]
+
+    return {
+        "dish_name": str(recipe.get("name", "Database Recipe")),
+        "used_ingredients": matched,
+        "missing_ingredients": missing,
+        "assumed_staples": staples,
+        "execution_steps": steps,
+    }
+
+
+def validate_structured_recipe_reply(
+    reply: str,
+    recipes: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Accept the model's selection only when it names a retrieved recipe.
+
+    The returned details are rebuilt from the selected database record. This
+    prevents a syntactically valid model response from adding unsupported facts.
+    """
+    text = reply.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end < start:
+        return None
+
+    try:
+        payload = json.loads(text[start : end + 1])
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    selected_name = normalize(payload.get("dish_name", ""))
+    recipe_by_name = {
+        normalize(recipe.get("name", "")): recipe
+        for recipe in recipes
+        if recipe.get("name")
+    }
+    selected_recipe = recipe_by_name.get(selected_name)
+    if selected_recipe is None:
+        return None
+
+    return structured_recipe_payload(selected_recipe)
+
+
 def fallback_chat_reply(user_message: str, matched_recipes: list[dict]) -> str:
     """
     Emergency Fallback: Mimics the exact JSON structure of Llama 3.2.
     Prevents the React frontend from crashing if the AI engine goes offline.
     """
-    import json
-
     # Scenario A: AI is off AND no recipes match the pantry
     if not matched_recipes:
         fallback_data = {
-            "dish_name": "System Offline / No Match",
+            "dish_name": "No Database Match",
             "used_ingredients": [],
             "missing_ingredients": [],
             "assumed_staples": [],
             "execution_steps": [
-                "My AI reasoning engine is currently offline or loading.",
-                "I couldn't find a recipe with your exact ingredients in my fallback memory.",
-                "Please try searching for standard staples like 'Chicken' or 'Pork'."
+                "LetThemCook could not find a database recipe matching those ingredients.",
+                "Try another dish name or enter ingredients separated by commas.",
             ]
         }
-        return json.dumps(fallback_data)
+        return json.dumps(fallback_data, ensure_ascii=False)
 
     # Scenario B: AI is off, but ChromaDB found a RAG match!
     top_recipe = matched_recipes[0]
-    
-    # FIX: Use normalized keys from normalise_recipe() instead of raw CSV headers
-    ingredients = top_recipe.get("allIngredients", ["Check full recipe for ingredients"])
-    steps = top_recipe.get("instructions", ["Cooking steps unavailable in fallback mode."])
-    dish_name = top_recipe.get("name", "Fallback Suggested Recipe")
-    
-    if isinstance(ingredients, str):
-        ingredients = [ingredients]
-    if isinstance(steps, str):
-        steps = [steps]
-
-    fallback_data = {
-        "dish_name": dish_name,
-        "used_ingredients": top_recipe.get("matched", ingredients),
-        "missing_ingredients": top_recipe.get("missing", ["(AI mapping disabled in fallback mode)"]),
-        "assumed_staples": ["Cooking Oil", "Salt", "Water"],
-        "execution_steps": steps
-    }
-    
-    return json.dumps(fallback_data)
+    return json.dumps(structured_recipe_payload(top_recipe), ensure_ascii=False)
 
 
+
+
+GREETINGS = {
+    "hello",
+    "hi",
+    "hey",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "how are you",
+    "yo",
+}
+
+ADVICE_WORDS = {
+    "store",
+    "leftover",
+    "substitute",
+    "replace",
+    "freeze",
+    "thaw",
+    "safe",
+    "safety",
+    "scale",
+}
+
+
+def is_greeting(text: str) -> bool:
+    normalized_text = normalize(text)
+    return normalized_text in GREETINGS or any(
+        normalized_text.startswith(greeting + " ") for greeting in GREETINGS
+    )
 
 
 def looks_like_ingredient_request(text: str) -> bool:
-    """Checks if the user is listing ingredients by looking for commas or 'and'."""
-    text = text.lower()
-    return "," in text or " and " in text or " with " in text
+    """Return True when a message appears to provide pantry ingredients."""
+    lowered = text.lower()
+    if any(word in normalize(text).split() for word in ADVICE_WORDS):
+        return False
+    return any(
+        marker in lowered
+        for marker in [",", " and ", " with ", " using ", "i have ", "ingredients:"]
+    )
 
 
 def extract_recipe_name_query(user_message: str) -> str:
@@ -616,15 +764,12 @@ def extract_recipe_name_query(user_message: str) -> str:
     if looks_like_ingredient_request(user_message):
         return ""
 
-    # FIX: Intercept casual greetings to prevent false positive database queries
-    greetings = {"hello", "hi", "hey", "good morning", "good afternoon", "good evening", "how are you", "yo"}
-    normalized_msg = user_message.lower().strip().strip("?!.")
-    if normalized_msg in greetings or any(normalized_msg.startswith(g + " ") for g in greetings):
+    if is_greeting(user_message):
         return ""
 
     text = normalize(user_message)
     if not text:
-        return None
+        return ""
 
     # Remove common chat/request words but keep the likely dish name.
     text = re.sub(
@@ -635,9 +780,8 @@ def extract_recipe_name_query(user_message: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
 
     # Avoid treating general advice questions as dish names.
-    advice_words = {"store", "leftover", "substitute", "replace", "freeze", "thaw", "safe", "safety"}
     tokens = text.split()
-    if any(token in advice_words for token in tokens):
+    if any(token in ADVICE_WORDS for token in tokens):
         return ""
 
     # Dish names are usually short. If the remaining text is too long, it is
@@ -707,6 +851,17 @@ def recipe_detail_reply(recipe: dict[str, Any], all_matches: list[dict[str, Any]
         reply += "\n\nOther recipe matches: " + "; ".join(other_matches)
 
     return reply
+
+
+def general_chat_fallback(user_message: str) -> str:
+    """Return readable chat text when the local language model is unavailable."""
+    if is_greeting(user_message):
+        return "Hello! Tell me what ingredients you have, and I will search the LetThemCook recipe database."
+    return (
+        "The local cooking AI is currently unavailable. "
+        "Recipe searches still use the LetThemCook database, so try entering a dish name "
+        "or a comma-separated ingredient list."
+    )
 
 
 def model_name_matches(installed_name: str, requested_name: str) -> bool:
@@ -836,26 +991,32 @@ def chat_with_chef_llama(request: ChatRequest) -> dict[str, str]:
     if not user_message:
         return {"chef_reply": "Please enter a message or a recipe name. 🍳"}
 
-    # 1. Search the database for context based on the user's message
+    # Search the database before the language model sees a recipe request.
     dish_query = extract_recipe_name_query(user_message)
-    matched_recipes = []
-    
+    matched_recipes: list[dict[str, Any]] = []
+    ingredient_request = looks_like_ingredient_request(user_message)
+
     if dish_query:
         matched_recipes = search_recipes_by_name(dish_query)
-    elif looks_like_ingredient_request(user_message):
+        if not matched_recipes:
+            return {"chef_reply": NO_MATCH_REPLY}
+    elif ingredient_request:
         pantry = extract_pantry_from_message(user_message)
         if pantry:
             matched_recipes = search_recipe_database(pantry)
             matched_recipes = [recipe for recipe in matched_recipes if recipe.get("score", 0) > 0]
+        if not matched_recipes:
+            return {"chef_reply": NO_MATCH_REPLY}
 
-    # 2. Pass EVERYTHING to Ollama: the message, the found recipes, and the history
+    # The model receives only the retrieved rows plus real chat history.
     ollama_reply = call_ollama(user_message, matched_recipes, history)
 
-    # 3. Return Ollama's response, or use the fallback only if Ollama crashes/is off
     if ollama_reply:
         return {"chef_reply": ollama_reply}
-        
-    return {"chef_reply": fallback_chat_reply(user_message, matched_recipes)}
+
+    if matched_recipes:
+        return {"chef_reply": recipe_detail_reply(matched_recipes[0], matched_recipes)}
+    return {"chef_reply": general_chat_fallback(user_message)}
 
 
 @app.post("/api/generate-recipe")
@@ -865,9 +1026,13 @@ def generate_rag_recipe(query: RecipeQuery) -> dict[str, Any]:
     matched_results = [recipe for recipe in results if recipe.get("score", 0) > 0]
 
     if matched_results:
-        reply = call_ollama(query.user_ingredients, matched_results) or fallback_chat_reply(query.user_ingredients, matched_results)
+        reply = call_ollama(
+            query.user_ingredients,
+            matched_results,
+            structured=True,
+        ) or fallback_chat_reply(query.user_ingredients, matched_results)
     else:
-        reply = NO_MATCH_REPLY
+        reply = fallback_chat_reply(query.user_ingredients, [])
 
     return {
         "status": "success",

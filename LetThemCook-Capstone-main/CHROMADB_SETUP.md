@@ -3,17 +3,22 @@
 Run these commands in PowerShell:
 
 ```powershell
-cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main\backend
-python -m pip install -r requirements.txt
+cd C:\path\to\LetThemCook-Capstone-main
+python -m pip install -r backend\requirements.txt
 ollama pull all-minilm
-python build_chroma.py
-python -m uvicorn Main:app --reload
+ollama pull llama3.2:3b
+python backend\update_database.py
+python backend\build_chroma.py
+python -m uvicorn Main:app --app-dir backend --reload
 ```
+
+If an older ChromaDB build is corrupt, stop the backend and remove only the generated
+`backend\chroma_db` directory before running `build_chroma.py` again.
 
 Expected indexing message:
 
 ```text
-ChromaDB indexed 459 recipes.
+ChromaDB indexed 429 recipes.
 ```
 
 Check:
@@ -22,6 +27,7 @@ Check:
 http://127.0.0.1:8000/health
 ```
 
-The response should show `"chroma_ready": true` and `"chroma_records": 459`.
+The response should show `"chroma_ready": true`, `"chroma_query_ready": true`,
+and `"chroma_records": 429`.
 
-`llama3.2` generates the answer. `all-minilm` creates local embeddings for ChromaDB.
+`llama3.2:3b` generates the answer. `all-minilm` creates local embeddings for ChromaDB.

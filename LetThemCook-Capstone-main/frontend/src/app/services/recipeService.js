@@ -75,13 +75,12 @@ export async function getAiRecipe(ingredientsArray) {
 /**
  * Send a message and the previous conversation to the FastAPI backend.
  */
-export async function chatWithChef(userMessage, ingredients = [], history = []) {
+export async function chatWithChef(userMessage, history = []) {
   try {
     const data = await requestJson("/api/chat", {
       method: "POST",
       body: JSON.stringify({
         user_message: userMessage,
-        ingredients: ingredients,
         history,
       }),
     });
@@ -111,14 +110,20 @@ export async function getAllRecipes() {
 }
 
 export async function searchRecipes(pantry, mealFilter = "All", nameQuery = "") {
-  const userIngredients = Array.isArray(pantry) ? pantry.join(", ") : pantry;
+  const pantryItems = Array.isArray(pantry)
+    ? pantry
+    : String(pantry || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
 
   try {
     const data = await requestJson("/api/recipes/search", {
       method: "POST",
       body: JSON.stringify({
-        user_ingredients: userIngredients,
-        max_time_minutes: 120,
+        pantry: pantryItems,
+        mealFilter,
+        nameQuery,
       }),
     });
 

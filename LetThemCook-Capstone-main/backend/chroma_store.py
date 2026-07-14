@@ -5,27 +5,30 @@ from pathlib import Path
 from typing import Any
 
 import chromadb
-# FIX: Import the true Ollama Embedding wrapper class
 from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
+
 
 class RecipeVectorStore:
     def __init__(self, base_dir: Path) -> None:
         self.collection_name = os.getenv("CHROMA_COLLECTION", "letthemcook_recipes")
         self.embedding_model = os.getenv("CHROMA_EMBED_MODEL", "all-minilm")
-        # Ensure we can reference the base URL defined in Main.py
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-        
+        self.collection_metadata = {
+            "embedding_model": self.embedding_model,
+            "schema_version": 2,
+        }
+
         self.client = chromadb.PersistentClient(path=str(base_dir / "chroma_db"))
-        
-        # FIX: Point embedding generation to your local running Ollama instance
+
         self.embedding_function = OllamaEmbeddingFunction(
             url=f"{self.ollama_base_url}/api/embeddings",
-            model_name=self.embedding_model
+            model_name=self.embedding_model,
         )
-        
+
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
             embedding_function=self.embedding_function,
+            metadata=self.collection_metadata,
         )
 
     @staticmethod
@@ -53,6 +56,7 @@ class RecipeVectorStore:
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
             embedding_function=self.embedding_function,
+            metadata=self.collection_metadata,
         )
 
         for start in range(0, len(recipes), batch_size):
@@ -79,7 +83,7 @@ class RecipeVectorStore:
         meal_filter: str = "All",
         name_query: str = "",
         max_time_minutes: int | None = None,
-        limit: int = 100,
+        limit: int = 500,
     ) -> list[int]:
         if self.count() == 0:
             return []
@@ -104,12 +108,11 @@ class RecipeVectorStore:
         elif len(filters) > 1:
             where = {"$and": filters}
 
-        # Inside backend/chroma_store.py -> search_ids()
         query_args: dict[str, Any] = {
             "query_texts": [". ".join(query_parts)],
-            # FIX: Increase the internal n_results limit from 100 to 500.
-            # This prevents perfectly valid recipes from being omitted due to semantic noise before keyword filtering.
-            "n_results": min(500, self.count()),
+            # Pantry ranking may inspect up to 500 candidates, while callers such
+            # as the health check can request a much smaller query.
+            "n_results": min(max(1, int(limit)), self.count()),
             "include": ["distances"],
         }
         if where is not None:

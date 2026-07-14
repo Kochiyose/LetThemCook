@@ -4,8 +4,8 @@ Cleaned full-stack version of **LetThemCook** with:
 
 - React + Vite frontend
 - FastAPI backend
-- Mock recipe database connected to the UI through API endpoints
-- Optional Ollama support for Chef Llama chat
+- Validated local CSV recipe database connected through FastAPI and ChromaDB
+- Local Ollama support for database-grounded Chef Llama chat
 
 ## Project structure
 
@@ -13,16 +13,16 @@ Cleaned full-stack version of **LetThemCook** with:
 LetThemCook-Capstone-main/
 ├─ backend/
 │  ├─ Main.py
+│  ├─ chroma_store.py
+│  ├─ build_chroma.py
+│  ├─ update_database.py
 │  ├─ requirements.txt
 │  └─ data/
-│     └─ LetThemCook_Core_Database.csv   # mock recipe database
+│     └─ LetThemCook_Cleaned.csv         # validated recipe database
 ├─ frontend/
 │  ├─ src/
 │  │  └─ app/
 │  │     ├─ App.jsx
-│  │     ├─ data/
-│  │     │  ├─ recipes.js
-│  │     │  └─ recipes.mock.json         # frontend fallback copy
 │  │     └─ services/
 │  │        └─ recipeService.js          # API connection
 │  └─ package.json
@@ -43,6 +43,7 @@ cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
   ollama pull llama3.2:3b
   ollama pull all-minilm
 
+  python backend/update_database.py
   python backend/build_chroma.py
 
   npm run dev
@@ -80,23 +81,24 @@ Example search body:
 }
 ```
 
-## Optional Ollama setup
+## Ollama setup
 
-By default, the backend uses database-only chat so the app responds quickly even without Ollama.
+The checked-in example configuration uses Ollama for local chat and embeddings. If
+Ollama becomes unavailable, recipe search falls back to the validated CSV.
 
 To enable Ollama in PowerShell before starting the backend:
 
 ```powershell
 $env:USE_OLLAMA="true"
-$env:OLLAMA_MODEL="llama3.2"
-python -m uvicorn Main:app --reload --host 127.0.0.1 --port 8000
+$env:OLLAMA_MODEL="llama3.2:3b"
+python -m uvicorn Main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
 
 Make sure Ollama is already running and the model exists:
 
 ```powershell
 ollama list
-ollama run llama3.2
+ollama run llama3.2:3b
 ```
 
 ## What was cleaned
@@ -107,5 +109,5 @@ ollama run llama3.2
 - Moved the CSV database into `backend/data/`.
 - Fixed the backend CSV path and CORS setup.
 - Removed the backend pandas dependency by using Python's built-in CSV reader.
-- Connected the UI search service to the FastAPI mock database.
-- Added a frontend fallback JSON generated from the same mock database.
+- Connected the UI search and chat services to the FastAPI database endpoints.
+- Added CSV validation and deterministic database-grounded fallbacks.
