@@ -565,7 +565,18 @@ export default function App() {
     if (parts.length === 0) return;
 
     const lower = pantry.map((p) => p.toLowerCase());
-    const newOnes = parts.filter((p) => !lower.includes(p.toLowerCase()));
+
+    // Dedupe both against the existing pantry AND against duplicates
+    // within this same input (e.g. "fish, fish").
+    const seen = new Set(lower);
+    const newOnes = [];
+    for (const part of parts) {
+      const key = part.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        newOnes.push(part);
+      }
+    }
 
     if (newOnes.length === 0) {
       setInputVal("");
@@ -574,7 +585,7 @@ export default function App() {
 
     setPantry((prev) => [...prev, ...newOnes]);
     setInputVal("");
-  };
+};
 
   /**
    * Remove ingredient from pantry by index
