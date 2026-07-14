@@ -89,5 +89,5 @@ export const EMPTY_STATE = {
 // Tab labels shown on mobile/tablet screens
 export const MOBILE_TABS = {
   recipes: "Recipes",
-  chat: "Chef Logro",
+  chat: "KitchenAI",
 };
