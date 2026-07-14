@@ -84,10 +84,16 @@ export async function chatWithChef(userMessage, history = []) {
         history,
       }),
     });
-    return data.chef_reply || data.message || "Kitchen AI did not return a reply.";
+    return {
+      text: data.chef_reply || data.message || "Kitchen AI did not return a reply.",
+      recipes: data.recipes || []
+    };
   } catch (error) {
     console.error("Chat Error:", error);
-    return "I'm having trouble responding right now. Please try again in a moment.";
+    return {
+      text: "I'm having trouble responding right now. Please try again in a moment.",
+      recipes: []
+    };
   }
 }
 

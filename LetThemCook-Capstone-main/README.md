@@ -1,13 +1,9 @@
 # LetThemCook Capstone
 
-Cleaned full-stack version of **LetThemCook** with:
+A local, web-based AI Chatbot Meal Recommendation and Recipe Catalog.
+This project uses **Retrieval-Augmented Generation (RAG)** through **ChromaDB** and the **Llama 3.2** model to provide strict, dataset-grounded cooking instructions without hallucination.
 
-- React + Vite frontend
-- FastAPI backend
-- Validated local CSV recipe database connected through FastAPI and ChromaDB
-- Local Ollama support for database-grounded Chef Llama chat
-
-## Project structure
+## Project Structure
 
 ```text
 LetThemCook-Capstone-main/
@@ -18,96 +14,90 @@ LetThemCook-Capstone-main/
 │  ├─ update_database.py
 │  ├─ requirements.txt
 │  └─ data/
-│     └─ LetThemCook_Cleaned.csv         # validated recipe database
+│     └─ LetThemCook_Cleaned.csv         # Validated recipe database
 ├─ frontend/
 │  ├─ src/
 │  │  └─ app/
 │  │     ├─ App.jsx
 │  │     └─ services/
-│  │        └─ recipeService.js          # API connection
+│  │        └─ recipeService.js          # Backend API connection
 │  └─ package.json
-├─ docs/
-│  ├─ frontend-handoff/                  # old handoff notes moved here
-│  └─ frontend-assets/                   # unused imported design assets
 └─ package.json
 ```
 
-## Run frontend and backend in the same Terminal
+---
 
-cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
+## 🚀 How to Run the Application
 
-  npm install
-  npm run install:frontend
-  python -m pip install -r backend/requirements.txt
+This application consists of three components that must be running simultaneously: the **AI Engine (Ollama)**, the **FastAPI Backend**, and the **React Frontend**.
 
-  ollama pull llama3.2:3b
-  ollama pull all-minilm
+### Step 1: Start the AI Engine (Ollama)
+The chatbot relies strictly on a local AI model for all reasoning and conversation. If Ollama is offline, the system will explicitly report that the Kitchen Assistant is unavailable.
 
-  python backend/update_database.py
-  python backend/build_chroma.py
+1. Ensure [Ollama](https://ollama.com/) is installed and running on your system.
+2. Open a terminal and download the required models:
+   ```powershell
+   ollama pull llama3.2:3b
+   ollama pull all-minilm
+   ```
+3. Keep the Ollama application running in the background.
 
-  npm run dev
+### Step 2: Set up and Start the Backend
+The backend serves the recipes and communicates with ChromaDB and Ollama.
 
-Then open:
+1. Open a new PowerShell terminal.
+2. Navigate to the project folder:
+   ```powershell
+   cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
+   ```
+3. Install Python dependencies:
+   ```powershell
+   python -m pip install -r backend/requirements.txt
+   ```
+4. Build the vector database (ChromaDB) from the CSV data:
+   ```powershell
+   python backend/update_database.py
+   python backend/build_chroma.py
+   ```
+5. Enable the Ollama configuration and start the backend server:
+   ```powershell
+   $env:USE_OLLAMA="true"
+   $env:OLLAMA_MODEL="llama3.2:3b"
+   python -m uvicorn Main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
+   ```
+6. The backend is now running at `http://127.0.0.1:8000`. Leave this terminal open.
 
-```text
-http://localhost:5173/
-```
+### Step 3: Start the Frontend
+The frontend provides the interactive UI for the user.
 
-The backend will run at:
+1. Open another new PowerShell terminal.
+2. Navigate to the project folder:
+   ```powershell
+   cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
+   ```
+3. Install Node.js dependencies:
+   ```powershell
+   npm install
+   npm run install:frontend
+   ```
+4. Start the frontend development server:
+   ```powershell
+   npm run dev
+   ```
+5. Open your web browser and navigate to:
+   ```text
+   http://localhost:5173/
+   ```
 
-```text
-http://127.0.0.1:8000
-```
+---
 
-## API endpoints
+## API Endpoints
 
-```text
-GET  /health
-GET  /api/recipes/all
-GET  /api/recipes/{id}
-POST /api/recipes/search
-POST /api/chat
-POST /api/generate-recipe
-```
+The FastAPI backend exposes the following routes:
 
-Example search body:
-
-```json
-{
-  "pantry": ["chicken", "garlic", "soy sauce"],
-  "mealFilter": "All",
-  "nameQuery": ""
-}
-```
-
-## Ollama setup
-
-The checked-in example configuration uses Ollama for local chat and embeddings. If
-Ollama becomes unavailable, recipe search falls back to the validated CSV.
-
-To enable Ollama in PowerShell before starting the backend:
-
-```powershell
-$env:USE_OLLAMA="true"
-$env:OLLAMA_MODEL="llama3.2:3b"
-python -m uvicorn Main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
-```
-
-Make sure Ollama is already running and the model exists:
-
-```powershell
-ollama list
-ollama run llama3.2:3b
-```
-
-## What was cleaned
-
-- Removed the empty duplicate nested project folder.
-- Moved old handoff/documentation files into `docs/frontend-handoff/`.
-- Moved unused imported screenshots/design assets into `docs/frontend-assets/`.
-- Moved the CSV database into `backend/data/`.
-- Fixed the backend CSV path and CORS setup.
-- Removed the backend pandas dependency by using Python's built-in CSV reader.
-- Connected the UI search and chat services to the FastAPI database endpoints.
-- Added CSV validation and deterministic database-grounded fallbacks.
+- `GET  /health` : Checks system status (ChromaDB, Ollama, and CSV loaded).
+- `GET  /api/recipes/all` : Returns all recipes.
+- `GET  /api/recipes/{id}` : Returns a specific recipe.
+- `POST /api/recipes/search` : Semantic RAG search for recipes.
+- `POST /api/chat` : General chatbot interface (requires Ollama).
+- `POST /api/generate-recipe` : Structured recipe generation (requires Ollama).

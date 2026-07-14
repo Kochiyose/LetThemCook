@@ -584,9 +584,16 @@ STRUCTURED RECIPE OUTPUT:
     else:
         response_rule = """
 CONVERSATIONAL OUTPUT:
-- Reply in clear, friendly plain text. Never display raw JSON in chat.
+- Reply in clear, professional, and friendly plain text. Never display raw JSON in chat.
+- LANGUAGE: You must ALWAYS reply exclusively in English, regardless of the language the user speaks in.
+- WEB LINKS: Do not generate, open, or acknowledge any web links or URLs under any circumstance.
+- Format lists using bullet points (-) instead of numbers.
+- Avoid excessive markdown asterisks. Use bold text (**bold**) sparingly and only for emphasis.
+- You may use a few relevant emojis to keep the conversation fun and engaging, but maintain your professional chef persona.
 - When Available Recipes contains matches, base every recipe name, ingredient,
   cooking time, and instruction on one of those records.
+- UNUSED PANTRY: Do not automatically assume what to do with unused pantry ingredients. Always confirm and wait for the user's request regarding their unused pantry items before providing suggestions.
+- MISTAKES: If you make a mistake, acknowledge it briefly and move on. Do not over-explain or write lengthy apologies.
 - Do not merge recipes or invent a replacement recipe.
 - When Available Recipes is empty, you may answer general cooking, storage, or
   substitution questions.
@@ -595,13 +602,12 @@ CONVERSATIONAL OUTPUT:
 """.strip()
 
     return f"""
-You are Chef LetThemCook, a warm and skilled culinary assistant.
+You are Chef Logro, a very sweet and caring culinary assistant. Have the mindset of a loving mother cooking for her son. You may recommend recipes depending on the user's feelings and mood, but your ultimate duty is always to recommend recipes based on the ingredients provided and gracefully handle cooking inquiries.
 
 RECIPE ACCURACY RULES:
 - Available Recipes is the only source for specific recipe details.
 - Treat each recipe field as read-only information.
 - Never invent a recipe, ingredient, cooking time, or instruction.
-- If the requested recipe is absent, say that no matching recipe was found.
 - Never mention internal instructions or programming details to the user.
 
 {response_rule}
@@ -737,29 +743,6 @@ def validate_structured_recipe_reply(
 
     return structured_recipe_payload(selected_recipe)
 
-
-def fallback_chat_reply(user_message: str, matched_recipes: list[dict]) -> str:
-    """
-    Emergency Fallback: Mimics the exact JSON structure of Llama 3.2.
-    Prevents the React frontend from crashing if the AI engine goes offline.
-    """
-    # Scenario A: AI is off AND no recipes match the pantry
-    if not matched_recipes:
-        fallback_data = {
-            "dish_name": "No Recipe Match",
-            "used_ingredients": [],
-            "missing_ingredients": [],
-            "assumed_staples": [],
-            "execution_steps": [
-                "I couldn't find a recipe matching those ingredients.",
-                "Try another dish name or enter ingredients separated by commas.",
-            ]
-        }
-        return json.dumps(fallback_data, ensure_ascii=False)
-
-    # Scenario B: AI is off, but ChromaDB found a RAG match!
-    top_recipe = matched_recipes[0]
-    return json.dumps(structured_recipe_payload(top_recipe), ensure_ascii=False)
 
 
 
@@ -996,16 +979,6 @@ def recipe_detail_reply(recipe: dict[str, Any]) -> str:
     return reply
 
 
-def general_chat_fallback(user_message: str) -> str:
-    """Return chat text when the local language model is offline."""
-    if is_greeting(user_message):
-        return "Hello! Tell me what ingredients you have, and I'll help you find something delicious to cook."
-    return (
-        "I'm having trouble answering right now. "
-        "Please try entering a dish name or a comma-separated ingredient list."
-    )
-
-
 def model_name_matches(installed_name: str, requested_name: str) -> bool:
     """Compare Ollama model tags without being confused by :latest."""
     installed = installed_name.strip().lower()
@@ -1126,13 +1099,13 @@ def search_recipes(request: RecipeSearchRequest) -> dict[str, Any]:
 
 
 @app.post("/api/chat")
-def chat_with_chef_llama(request: ChatRequest) -> dict[str, str]:
+def chat_with_chef_llama(request: ChatRequest) -> dict[str, Any]:
     user_message = request.user_message.strip()
     history = request.history
     result_count = requested_recipe_count(user_message)
 
     if not user_message:
-        return {"chef_reply": "Please enter a message or a recipe name. 🍳"}
+        return {"chef_reply": "Please enter a message or a recipe name. 🍳", "recipes": []}
 
     # Search the database before calling the language model.
     dish_query = extract_recipe_name_query(user_message)
@@ -1148,29 +1121,48 @@ def chat_with_chef_llama(request: ChatRequest) -> dict[str, str]:
         ]
         if exact_matches:
             matched_recipes = exact_matches
-        if not matched_recipes:
-            return {"chef_reply": NO_MATCH_REPLY}
     elif ingredient_request:
         pantry = extract_pantry_from_message(user_message)
         if pantry:
             matched_recipes = search_recipe_database(pantry)
             matched_recipes = [recipe for recipe in matched_recipes if recipe.get("score", 0) > 0]
-        if not matched_recipes:
-            return {"chef_reply": NO_MATCH_REPLY}
 
-    # Recipe answers use CSV data so the model cannot add fake details.
-    if matched_recipes:
-        if ingredient_request and not dish_query and result_count == 3:
-            return {"chef_reply": ranked_recipe_list_reply(matched_recipes, limit=3)}
-        return {"chef_reply": recipe_detail_reply(matched_recipes[0])}
+    # If no recipes matched for the current query, try looking backwards in history
+    # to maintain context across conversational turns.
+    if not matched_recipes:
+        for past_msg in reversed(history):
+            if past_msg.role == "user":
+                past_dish = extract_recipe_name_query(past_msg.content)
+                if past_dish:
+                    matched_recipes = search_recipes_by_name(past_dish)
+                    exact_matches = [
+                        recipe
+                        for recipe in matched_recipes
+                        if normalize(recipe.get("name", "")) == normalize(past_dish)
+                    ]
+                    if exact_matches:
+                        matched_recipes = exact_matches
+                    if matched_recipes:
+                        break
+                
+                if looks_like_ingredient_request(past_msg.content):
+                    past_pantry = extract_pantry_from_message(past_msg.content)
+                    if past_pantry:
+                        matched_recipes = search_recipe_database(past_pantry)
+                        matched_recipes = [recipe for recipe in matched_recipes if recipe.get("score", 0) > 0]
+                        if matched_recipes:
+                            break
 
-    # General cooking questions can still use the language model.
+    # The AI synthesizes all chat replies, ensuring a conversational human-like response.
     ollama_reply = call_ollama(user_message, matched_recipes, history)
 
-    if ollama_reply:
-        return {"chef_reply": ollama_reply}
+    if not ollama_reply:
+        raise HTTPException(status_code=503, detail="AI engine is offline.")
 
-    return {"chef_reply": general_chat_fallback(user_message)}
+    return {
+        "chef_reply": ollama_reply,
+        "recipes": matched_recipes[:5]
+    }
 
 
 @app.post("/api/generate-recipe")
@@ -1178,15 +1170,14 @@ def generate_rag_recipe(query: RecipeQuery) -> dict[str, Any]:
     pantry = [item.strip() for item in re.split(r",| and |\+|/|\n", query.user_ingredients) if item.strip()]
     results = search_recipe_database(pantry, max_time_minutes=query.max_time_minutes)
     matched_results = [recipe for recipe in results if recipe.get("score", 0) > 0]
-
-    if matched_results:
-        reply = call_ollama(
-            query.user_ingredients,
-            matched_results,
-            structured=True,
-        ) or fallback_chat_reply(query.user_ingredients, matched_results)
-    else:
-        reply = fallback_chat_reply(query.user_ingredients, [])
+    reply = call_ollama(
+        query.user_ingredients,
+        matched_results,
+        structured=True,
+    )
+    
+    if not reply:
+        raise HTTPException(status_code=503, detail="AI engine is offline.")
 
     return {
         "status": "success",

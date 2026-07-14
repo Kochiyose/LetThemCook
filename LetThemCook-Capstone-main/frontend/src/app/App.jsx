@@ -564,13 +564,14 @@ export default function App() {
     setIsTyping(true);
 
     try {
-      const reply = await chatWithChef(content, history);
+      const response = await chatWithChef(content, history);
       setMessages((previous) => [
         ...previous,
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: reply,
+          content: response.text,
+          recipes: response.recipes,
         },
       ]);
     } catch (error) {
@@ -988,6 +989,65 @@ export default function App() {
     </div>
   );
 
+  const renderMessageText = (msg) => {
+    let parts = [msg.content];
+
+    // 1. Link Recipes
+    if (msg.recipes && msg.recipes.length > 0) {
+      msg.recipes.forEach((recipe) => {
+        const recipeName = recipe.name;
+        if (!recipeName) return;
+        
+        const newParts = [];
+        parts.forEach((part) => {
+          if (typeof part === "string") {
+            const splitStr = part.split(recipeName);
+            for (let i = 0; i < splitStr.length; i++) {
+              newParts.push(splitStr[i]);
+              if (i < splitStr.length - 1) {
+                newParts.push(
+                  <span
+                    key={`${recipeName}-${i}`}
+                    onClick={() => setSelected(recipe)}
+                    className="font-bold underline cursor-pointer text-primary hover:opacity-80 transition-opacity"
+                  >
+                    {recipeName}
+                  </span>
+                );
+              }
+            }
+          } else {
+            newParts.push(part);
+          }
+        });
+        parts = newParts;
+      });
+    }
+
+    // 2. Parse Bold Text
+    let finalParts = [];
+    parts.forEach((part, index) => {
+      if (typeof part === "string") {
+        const splitStr = part.split(/(\*\*.*?\*\*)/g);
+        splitStr.forEach((s, i) => {
+          if (s.startsWith("**") && s.endsWith("**")) {
+            finalParts.push(
+              <strong key={`bold-${index}-${i}`} className="font-semibold text-stone-900">
+                {s.slice(2, -2)}
+              </strong>
+            );
+          } else if (s) {
+            finalParts.push(s);
+          }
+        });
+      } else {
+        finalParts.push(part);
+      }
+    });
+
+    return finalParts;
+  };
+
   // ── Chat Panel JSX ─────────────────────────────────────────────────────────
   const chatPanel = (
     <div className="flex flex-col h-full min-h-0 bg-[#f9f6f1]">
@@ -1056,7 +1116,7 @@ export default function App() {
     wordBreak: "break-word",
   }}
 >
-  {msg.content}
+  {renderMessageText(msg)}
 </div>
           </motion.div>
         ))}

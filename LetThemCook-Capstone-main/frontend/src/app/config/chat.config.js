@@ -10,7 +10,7 @@
 
 // This is the first message users see when they open the chat
 export const WELCOME_MESSAGE =
-  "Hi there! 👨‍🍳 I'm your Kitchen AI assistant. Tell me what ingredients you have on hand, and I'll help you find the perfect recipe. You can also ask me about cooking tips, substitutions, or how to store food!";
+  "Hi there! 🧑‍🍳 I'm Chef Logro, your sweet and caring culinary assistant. Tell me what ingredients you have on hand, and I'll help you find the perfect recipe. You can also ask me about cooking tips, substitutions, or how to store food!";
 
 
 // These messages cycle in order - one per user message
@@ -36,7 +36,7 @@ export const QUICK_PROMPTS = [
 
 // Settings for the chat panel header
 export const CHAT_HEADER = {
-  name: "Kitchen AI",
+  name: "Chef Logro",
   statusIdle: "Llama 3.2 · Local",
   statusThinking: "Thinking…",
 };
