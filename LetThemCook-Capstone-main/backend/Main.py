@@ -962,11 +962,26 @@ def ranked_recipe_list_reply(recipes: list[dict[str, Any]], limit: int = 3) -> s
     return "\n\n".join(blocks)
 
 
+def format_instruction_text(instruction: Any) -> str:
+    """Change an all-uppercase instruction to normal sentence case."""
+    text = re.sub(r"^\s*\d+[\.\)]\s*", "", str(instruction)).strip()
+    letters = [character for character in text if character.isalpha()]
+    if letters and all(character.isupper() for character in letters):
+        lowered = text.lower()
+        return re.sub(
+            r"[a-z]",
+            lambda match: match.group(0).upper(),
+            lowered,
+            count=1,
+        )
+    return text
+
+
 def recipe_detail_reply(recipe: dict[str, Any]) -> str:
     """Format one complete recipe using CSV data."""
     ingredients = recipe.get("allIngredients", [])
     raw_steps = recipe.get("instructions", [])
-    steps = [re.sub(r"^\s*\d+[\.\)]\s*", "", str(step)).strip() for step in raw_steps]
+    steps = [format_instruction_text(step) for step in raw_steps]
 
     ingredient_text = ", ".join(ingredients) if ingredients else "ingredients listed in the recipe card"
     step_text = "\n".join(f"{index + 1}. {step}" for index, step in enumerate(steps)) if steps else "Open the recipe card to view the steps."
