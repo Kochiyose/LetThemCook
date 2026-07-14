@@ -63,7 +63,7 @@ function formatTotalTime(minutes) {
 }
 
 function sanitizeIngredientInput(value) {
-  return value.replace(/[^a-zA-Z, -]/g, "");
+  return value.replace(/[^\p{L}\p{N},'’&/(). -]/gu, "");
 }
 /**
  * MealBadge - Shows the meal type (Breakfast, Lunch, Dinner)
@@ -460,6 +460,7 @@ export default function App() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [nameSearch, setNameSearch] = useState("");
   const [selected, setSelected] = useState(null);
+  const [chatRecipeContext, setChatRecipeContext] = useState(null);
   const [messages, setMessages] = useState([WELCOME]);
   const [chatInput, setChatInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -558,11 +559,11 @@ export default function App() {
     };
   }, [pantry, activeFilter, nameSearch]);
 
-  // Refresh the quick-prompt suggestions whenever the pantry or the currently
-  // open recipe changes, so a suggestion referencing them stays up to date.
+  // Refresh the quick-prompt suggestions whenever the pantry or latest recipe changes.
   useEffect(() => {
-    setQuickPrompts(buildQuickPrompts(pantry, selected));
-  }, [pantry, selected]);
+    if (selected) setChatRecipeContext(selected);
+    setQuickPrompts(buildQuickPrompts(pantry, selected ?? chatRecipeContext));
+  }, [pantry, selected, chatRecipeContext]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -638,12 +639,12 @@ export default function App() {
     ]);
     setChatInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-    setQuickPrompts(buildQuickPrompts(pantry, selected));
+    setQuickPrompts(buildQuickPrompts(pantry, selected ?? chatRecipeContext));
 
     setIsTyping(true);
 
     try {
-      const response = await chatWithChef(content, history);
+      const response = await chatWithChef(content, history, pantry);
       setMessages((previous) => [
         ...previous,
         {
@@ -1097,7 +1098,9 @@ export default function App() {
 
     // 1. Link Recipes
     if (msg.recipes && msg.recipes.length > 0) {
-      msg.recipes.forEach((recipe) => {
+      [...msg.recipes]
+        .sort((first, second) => (second.name?.length ?? 0) - (first.name?.length ?? 0))
+        .forEach((recipe) => {
         const recipeName = recipe.name;
         if (!recipeName) return;
         
@@ -1112,6 +1115,14 @@ export default function App() {
                   <span
                     key={`${recipeName}-${i}`}
                     onClick={() => setSelected(recipe)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelected(recipe);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
                     className="font-bold underline cursor-pointer text-primary hover:opacity-80 transition-opacity"
                   >
                     {recipeName}
@@ -1124,7 +1135,7 @@ export default function App() {
           }
         });
         parts = newParts;
-      });
+        });
     }
 
     // 2. Parse Bold Text
@@ -1262,7 +1273,7 @@ export default function App() {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setQuickPrompts(buildQuickPrompts(pantry, selected));
+            setQuickPrompts(buildQuickPrompts(pantry, selected ?? chatRecipeContext));
           }}
           title="Show different suggestions"
           className="flex-shrink-0 p-1 rounded-full text-primary/70 hover:text-primary hover:bg-primary/10 transition-colors"

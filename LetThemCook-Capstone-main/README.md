@@ -29,65 +29,28 @@ LetThemCook-Capstone-main/
 
 ## 🚀 How to Run the Application
 
-This application consists of three components that must be running simultaneously: the **AI Engine (Ollama)**, the **FastAPI Backend**, and the **React Frontend**.
+Use one PowerShell window from the project root. Make sure Ollama is installed and running, then run:
 
-### Step 1: Start the AI Engine (Ollama)
-The chatbot relies strictly on a local AI model for all reasoning and conversation. If Ollama is offline, the system will explicitly report that the Kitchen Assistant is unavailable.
+```powershell
+cd C:\Users\jayta\Documents\GitHub\Sample\LetThemCook-Capstone-main
 
-1. Ensure [Ollama](https://ollama.com/) is installed and running on your system.
-2. Open a terminal and download the required models:
-   ```powershell
-   ollama pull llama3.2:3b
-   ollama pull all-minilm
-   ```
-3. Keep the Ollama application running in the background.
+if (-not (Test-Path .venv)) { python -m venv .venv }
+.\.venv\Scripts\Activate.ps1
 
-### Step 2: Set up and Start the Backend
-The backend serves the recipes and communicates with ChromaDB and Ollama.
+python -m pip install -r backend\requirements.txt
+npm install
+npm run install:frontend
 
-1. Open a new PowerShell terminal.
-2. Navigate to the project folder:
-   ```powershell
-   cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
-   ```
-3. Install Python dependencies:
-   ```powershell
-   python -m pip install -r backend/requirements.txt
-   ```
-4. Build the vector database (ChromaDB) from the CSV data:
-   ```powershell
-   python backend/update_database.py
-   python backend/build_chroma.py
-   ```
-5. Enable the Ollama configuration and start the backend server:
-   ```powershell
-   $env:USE_OLLAMA="true"
-   $env:OLLAMA_MODEL="llama3.2:3b"
-   python -m uvicorn Main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
-   ```
-6. The backend is now running at `http://127.0.0.1:8000`. Leave this terminal open.
+ollama pull llama3.2:3b
+ollama pull all-minilm
 
-### Step 3: Start the Frontend
-The frontend provides the interactive UI for the user.
+python backend\update_database.py
+python backend\build_chroma.py
 
-1. Open another new PowerShell terminal.
-2. Navigate to the project folder:
-   ```powershell
-   cd C:\Users\jayta\Desktop\LetThemCook\LetThemCook-Capstone-main
-   ```
-3. Install Node.js dependencies:
-   ```powershell
-   npm install
-   npm run install:frontend
-   ```
-4. Start the frontend development server:
-   ```powershell
-   npm run dev
-   ```
-5. Open your web browser and navigate to:
-   ```text
-   http://localhost:5173/
-   ```
+npm run dev
+```
+
+The last command starts both the FastAPI backend and React frontend in the same PowerShell window. Open `http://localhost:5173/` in your browser. Press `Ctrl+C` in that window to stop both servers.
 
 ---
 
@@ -99,5 +62,5 @@ The FastAPI backend exposes the following routes:
 - `GET  /api/recipes/all` : Returns all recipes.
 - `GET  /api/recipes/{id}` : Returns a specific recipe.
 - `POST /api/recipes/search` : Semantic RAG search for recipes.
-- `POST /api/chat` : General chatbot interface (requires Ollama).
-- `POST /api/generate-recipe` : Structured recipe generation (requires Ollama).
+- `POST /api/chat` : Grounded recipe recommendations and cooking chat.
+- `POST /api/generate-recipe` : Structured, dataset-grounded recipe generation.

@@ -8,9 +8,11 @@ AI service is unavailable, safe CSV fallbacks keep the recipe catalog usable.
 from __future__ import annotations
 
 import csv
+import html
 import json
 import os
 import re
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Literal
 
@@ -94,6 +96,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     user_message: str
     history: list[ChatMessage] = Field(default_factory=list)  # Previous chat messages sent by React
+    pantry: list[str] = Field(default_factory=list)
 
 
 class RecipeQuery(BaseModel):
@@ -103,6 +106,23 @@ class RecipeQuery(BaseModel):
 
 def normalize(text: Any) -> str:
     return re.sub(r"[^a-z0-9 ]+", " ", str(text).lower()).strip()
+
+
+def clean_display_text(value: Any) -> str:
+    text = html.unescape(str(value))
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\(\s+", "(", text)
+    text = re.sub(r"\s+\)", ")", text)
+    text = re.sub(r"\s+--\s+", " - ", text)
+    text = re.sub(r"\s+-\s*", " - ", text)
+    return text
+
+
+def clean_recipe_name(value: Any) -> str:
+    text = clean_display_text(value)
+    if text.count("(") > text.count(")"):
+        text += ")" * (text.count("(") - text.count(")"))
+    return text
 
 
 def parse_r_vector(value: Any) -> list[str]:
@@ -117,11 +137,11 @@ def parse_r_vector(value: Any) -> list[str]:
     # Most records are c("a", "b"). This keeps commas inside quoted strings.
     quoted = re.findall(r'"((?:[^"\\]|\\.)*)"', text, flags=re.DOTALL)
     if quoted:
-        return [re.sub(r"\s+", " ", item.replace('\\"', '"')).strip() for item in quoted if item.strip()]
+        return [clean_display_text(item.replace('\\"', '"')) for item in quoted if item.strip()]
 
     # Fallback for plain comma-separated fields.
     text = re.sub(r"^c\(|\)$", "", text)
-    return [item.strip().strip('"\'') for item in text.split(",") if item.strip()]
+    return [clean_display_text(item.strip().strip('"\'')) for item in text.split(",") if item.strip()]
 
 
 def parse_recipe_minutes(value: Any) -> int:
@@ -193,9 +213,27 @@ def detect_cooking_method(category: str, keywords: list[str], instructions: list
     return "Cook"
 
 
+def format_instruction_text(instruction: Any) -> str:
+    """Change an all-uppercase instruction to normal sentence case."""
+    text = re.sub(r"^\s*\d+[\.\)]\s*", "", str(instruction)).strip()
+    letters = [character for character in text if character.isalpha()]
+    if letters and all(character.isupper() for character in letters):
+        lowered = text.lower()
+        return re.sub(
+            r"[a-z]",
+            lambda match: match.group(0).upper(),
+            lowered,
+            count=1,
+        )
+    return text
+
+
 def normalise_recipe(row: dict[str, Any], index: int) -> dict[str, Any]:
     ingredients = parse_r_vector(row.get("RecipeIngredientParts", ""))
-    instructions = parse_r_vector(row.get("RecipeInstructions", ""))
+    instructions = [
+        format_instruction_text(step)
+        for step in parse_r_vector(row.get("RecipeInstructions", ""))
+    ]
     keywords = parse_r_vector(row.get("Keywords", ""))
 
     category = str(row.get("RecipeCategory", "") or "")
@@ -206,7 +244,7 @@ def normalise_recipe(row: dict[str, Any], index: int) -> dict[str, Any]:
     # Keep the first six items for compact card summaries. Matching now uses the full ingredient list.
     core_ingredients = ingredients[:6] if ingredients else keywords[:6]
 
-    recipe_name = str(row.get("Name", "") or f"Recipe {index + 1}").strip()
+    recipe_name = clean_recipe_name(row.get("Name", "") or f"Recipe {index + 1}")
 
     return {
         "id": index + 1,
@@ -245,6 +283,71 @@ RECIPES = load_recipes()
 RECIPE_BY_ID = {recipe["id"]: recipe for recipe in RECIPES}
 VECTOR_STORE = RecipeVectorStore(BASE_DIR)
 
+KNOWN_INGREDIENT_WORDS = {
+    word
+    for recipe in RECIPES
+    for ingredient in recipe.get("allIngredients", [])
+    for word in normalize(ingredient).split()
+    if len(word) >= 4
+}
+
+KNOWN_INGREDIENT_TERMS = {
+    normalize(ingredient)
+    for recipe in RECIPES
+    for ingredient in recipe.get("allIngredients", [])
+    if normalize(ingredient)
+}
+
+INGREDIENT_FORM_WORDS = {
+    "broth",
+    "butter",
+    "cheese",
+    "cream",
+    "extract",
+    "flour",
+    "ice",
+    "juice",
+    "milk",
+    "oil",
+    "paste",
+    "powder",
+    "sauce",
+    "stock",
+    "syrup",
+    "tartar",
+    "vinegar",
+    "wine",
+}
+
+DISTINCT_INGREDIENT_MODIFIERS = {
+    "almond",
+    "apple",
+    "cashew",
+    "cocoa",
+    "peanut",
+    "sunflower",
+}
+
+
+def resolve_pantry_items(pantry: list[str]) -> list[str]:
+    resolved: list[str] = []
+    for raw_item in pantry:
+        words = normalize(raw_item).split()
+        corrected: list[str] = []
+        for word in words:
+            if len(word) < 4 or word in KNOWN_INGREDIENT_WORDS:
+                corrected.append(word)
+                continue
+            matches = get_close_matches(word, KNOWN_INGREDIENT_WORDS, n=1, cutoff=0.8)
+            if matches and abs(len(matches[0]) - len(word)) <= 1:
+                corrected.append(matches[0])
+            else:
+                corrected.append(word)
+        item = " ".join(corrected).strip()
+        if item and item not in resolved:
+            resolved.append(item)
+    return resolved
+
 
 def parse_minutes(value: Any) -> int:
     match = re.search(r"(\d+)", str(value))
@@ -271,6 +374,7 @@ def ingredient_matches_pantry(ingredient: str, pantry_terms: list[str]) -> bool:
     matches "chicken pieces", while "green onion" matches "green onions".
     """
     ingredient_key = normalize(ingredient)
+    ingredient_forms = set(ingredient_key.split()) & INGREDIENT_FORM_WORDS
 
     def phrase_inside(longer: str, shorter: str) -> bool:
         # Word boundaries prevent false matches such as "egg" inside "eggplant".
@@ -279,6 +383,14 @@ def ingredient_matches_pantry(ingredient: str, pantry_terms: list[str]) -> bool:
     for pantry_item in pantry_terms:
         if not pantry_item:
             continue
+        pantry_forms = set(pantry_item.split()) & INGREDIENT_FORM_WORDS
+        if ingredient_forms != pantry_forms:
+            continue
+        if "butter" in ingredient_forms:
+            ingredient_modifiers = set(ingredient_key.split()) & DISTINCT_INGREDIENT_MODIFIERS
+            pantry_modifiers = set(pantry_item.split()) & DISTINCT_INGREDIENT_MODIFIERS
+            if ingredient_modifiers != pantry_modifiers:
+                continue
         if phrase_inside(ingredient_key, pantry_item) or phrase_inside(pantry_item, ingredient_key):
             return True
 
@@ -322,6 +434,8 @@ def recipe_matches(recipe: dict[str, Any], pantry: list[str]) -> dict[str, Any]:
             "availLines": [],
             "missingLines": list(all_ingredients),
             "unusedPantry": [],
+            "matchedPantry": [],
+            "pantryCoverage": 0,
         }
 
     available_lines = [
@@ -348,13 +462,19 @@ def recipe_matches(recipe: dict[str, Any], pantry: list[str]) -> dict[str, Any]:
     score = len(matched) / (len(required_ingredients) or 1)
     tier = 1 if not missing_lines else 2 if len(missing_lines) <= 1 else 3
 
-    unused_pantry = [
+    matched_pantry = [
         pantry_item
-        for pantry_item in pantry
-        if not any(
-            ingredient_matches_pantry(ingredient, [normalize(pantry_item)])
+        for pantry_item in pantry_terms
+        if any(
+            ingredient_matches_pantry(ingredient, [pantry_item])
             for ingredient in all_ingredients
         )
+    ]
+
+    unused_pantry = [
+        pantry_item
+        for pantry_item in pantry_terms
+        if pantry_item not in matched_pantry
     ]
 
     return {
@@ -366,6 +486,8 @@ def recipe_matches(recipe: dict[str, Any], pantry: list[str]) -> dict[str, Any]:
         "availLines": available_lines,
         "missingLines": missing_lines,
         "unusedPantry": unused_pantry,
+        "matchedPantry": matched_pantry,
+        "pantryCoverage": len(matched_pantry) / len(pantry_terms),
     }
 
 
@@ -375,6 +497,7 @@ def search_recipe_database(
     name_query: str = "",
     max_time_minutes: int | None = None,
 ) -> list[dict[str, Any]]:
+    pantry = resolve_pantry_items(pantry)
     candidate_ids: list[int] = []
     vector_search_failed = False
 
@@ -440,6 +563,7 @@ def search_recipe_database(
         ranked = [item for item in ranked if item.get("matched")]
         ranked.sort(
             key=lambda item: (
+                -item.get("pantryCoverage", 0),
                 item.get("tier", 3),
                 -item.get("score", 0),
                 len(item.get("missing", [])),
@@ -466,6 +590,7 @@ def extract_pantry_from_message(message: str) -> list[str]:
         r"\bingredients?\s*(?:are|:)\s*",
         r"\busing\b",
         r"\bwith\b",
+        r"\bbuilt\s+around\b",
         r"\bforx?\s+example\s*:",
         r"\bexample\s*:",
         r"\bfrom\b",
@@ -487,7 +612,7 @@ def extract_pantry_from_message(message: str) -> list[str]:
     for piece in pieces:
         item = normalize(piece)
         item = re.sub(
-            r"\b(what|can|i|do|make|cook|with|using|have|please|recipe|recipes|food|recommend|suggest|show|give|top|best|for|from|example)\b",
+            r"\b(what|can|i|do|make|cook|with|using|have|please|recipe|recipes|food|recommend|suggest|show|give|top|best|for|from|example|any|ideas|built|around)\b",
             "",
             item,
         )
@@ -499,9 +624,23 @@ def extract_pantry_from_message(message: str) -> list[str]:
 
 
 NO_MATCH_REPLY = (
-    "I could not find that exact recipe in LetThemCook yet. "
-    "Try searching another dish name or list ingredients with commas, like: "
-    "eggs, butter, rice. 😊"
+    "I couldn't find that exact recipe yet. "
+    "Try another dish name or list ingredients with commas, like eggs, butter, rice. 😊"
+)
+
+NO_INGREDIENT_MATCH_REPLY = (
+    "I couldn't find a suitable recipe from those ingredients yet. "
+    "Try adding another ingredient or checking the spelling, and I'll look again. 🍳"
+)
+
+NO_HEALTHY_PANTRY_MATCH_REPLY = (
+    "I couldn't find a healthier recipe match using the current pantry ingredients. "
+    "Add more ingredients to the pantry, then ask me again. 🥗"
+)
+
+PANTRY_NEEDED_REPLY = (
+    "Add the ingredients you currently have to your pantry first, then ask me again. "
+    "I'll use them to choose the most suitable recipes for you. 🍳"
 )
 
 
@@ -542,6 +681,7 @@ PRIVATE_CHAT_TERMS = [
     "API",
     "Ollama",
     "Llama",
+    "Available Recipes",
 ]
 
 
@@ -684,9 +824,10 @@ def call_ollama(
                 print("Ollama returned recipe JSON that was not grounded in the retrieved records.")
                 return None
             return json.dumps(grounded_payload, ensure_ascii=False)
+        reply = re.sub(r"(?m)^\s*\*\s+", "- ", reply)
         if reply and mentions_private_technical_details(reply):
             print("Ollama reply included private technical details. Using a safe reply instead.")
-            return "I am a culinary assistant and cannot discuss programming, database, or technical details. How can I help you with cooking?"
+            return "I couldn't answer that reliably. Please try another cooking question, and I'll help as clearly as I can. 🍳"
         return reply or None
     except requests.RequestException as error:
         # Returning None lets the existing database fallback answer safely.
@@ -778,6 +919,87 @@ ADVICE_WORDS = {
     "safe",
     "safety",
     "scale",
+    "tip",
+    "tips",
+}
+
+COOKING_WORDS = {
+    "bake",
+    "boil",
+    "breakfast",
+    "cook",
+    "dinner",
+    "dish",
+    "food",
+    "freeze",
+    "fry",
+    "grill",
+    "healthy",
+    "healthier",
+    "ingredient",
+    "kitchen",
+    "leftover",
+    "lunch",
+    "make",
+    "meal",
+    "oven",
+    "pantry",
+    "prepare",
+    "recipe",
+    "recipes",
+    "roast",
+    "saute",
+    "steam",
+    "stir",
+    "storage",
+    "store",
+    "substitute",
+    "thaw",
+    "unhealthy",
+}
+
+OUT_OF_SCOPE_PATTERNS = [
+    r"\b(history|historical|politics|political|president|election)\b",
+    r"\b(website|webpage|programming|code|database|backend|frontend|api)\b",
+    r"\b(joke|meme|roleplay|pretend game)\b",
+    r"\b(taxonomy|biology|animal facts?)\b",
+    r"\b(catch|hunt|forage)\b",
+    r"\b(restaurant|map|directions?)\b",
+    r"https?://|www\.",
+]
+
+PANTRY_DEPENDENT_PHRASES = [
+    "already have",
+    "in my pantry",
+    "leftover",
+    "most perishable",
+    "my pantry",
+    "right now",
+    "uses up",
+    "using what",
+    "what i have",
+]
+
+PERISHABLE_WORDS = {
+    "avocado",
+    "banana",
+    "beef",
+    "cheese",
+    "chicken",
+    "cream",
+    "egg",
+    "fish",
+    "herb",
+    "lettuce",
+    "milk",
+    "mushroom",
+    "pork",
+    "seafood",
+    "shrimp",
+    "spinach",
+    "tofu",
+    "tomato",
+    "yogurt",
 }
 
 
@@ -788,6 +1010,194 @@ def is_greeting(text: str) -> bool:
     )
 
 
+def recognized_single_ingredient(text: str) -> str:
+    cleaned = normalize(text)
+    if (
+        not cleaned
+        or is_greeting(text)
+        or cleaned in {"thanks", "thank you", "bye", "goodbye"}
+        or len(cleaned.split()) > 3
+        or is_basic_staple(cleaned)
+    ):
+        return ""
+    resolved = resolve_pantry_items([cleaned])
+    if not resolved:
+        return ""
+    candidate = resolved[0]
+    if len(candidate.split()) > 1 and candidate not in KNOWN_INGREDIENT_TERMS:
+        return ""
+    if any(
+        ingredient_matches_pantry(ingredient, [candidate])
+        for ingredient in KNOWN_INGREDIENT_TERMS
+    ):
+        return candidate
+    return ""
+
+
+def is_kitchen_related_message(text: str, pantry: list[str] | None = None) -> bool:
+    cleaned = normalize(text)
+    if not cleaned:
+        return True
+    if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in OUT_OF_SCOPE_PATTERNS):
+        return False
+    if is_greeting(text) or cleaned in {"thanks", "thank you", "bye", "goodbye"}:
+        return True
+    if exact_recipe_name_in_message(text):
+        return True
+    if recognized_single_ingredient(text):
+        return True
+    if any(word in cleaned.split() for word in COOKING_WORDS | ADVICE_WORDS):
+        return True
+    if pantry and any(marker in cleaned for marker in ["what can i", "recommend", "suggest", "top", "best"]):
+        return True
+    if looks_like_ingredient_request(text):
+        extracted = resolve_pantry_items(extract_pantry_from_message(text))
+        ingredient_terms = {
+            normalize(ingredient)
+            for recipe in RECIPES
+            for ingredient in recipe.get("allIngredients", [])
+        }
+        return any(
+            item in ingredient_terms
+            or any(item in known or known in item for known in ingredient_terms)
+            for item in extracted
+        )
+    return False
+
+
+def out_of_scope_reply(text: str) -> str:
+    cleaned = normalize(text)
+    if re.search(r"\b(history|historical|politics|political|president|election)\b", cleaned):
+        return "I can't help with history or politics, but I can help you choose or prepare a recipe. 🍳"
+    if re.search(r"\b(website|webpage|programming|code|database|backend|frontend|api)\b", cleaned):
+        return "I can't help with programming or software questions, but I can help with cooking and recipes. 🍳"
+    if re.search(r"\b(restaurant|map|direction|directions|travel|location)\b", cleaned):
+        return "I can't provide locations, maps, or restaurant directions, but I can help you cook something at home. 🍳"
+    if re.search(r"\b(taxonomy|biology|animal fact|animal facts)\b", cleaned):
+        return "I can't answer animal biology questions, but I can help with safe food preparation and cooking. 🍳"
+    if re.search(r"\b(catch|hunt|forage)\b", cleaned):
+        return "I can't help with catching, hunting, or foraging, but I can help prepare ingredients already in your kitchen. 🍳"
+    if re.search(r"\b(joke|meme|roleplay|pretend game)\b", cleaned):
+        return "I can't help with that kind of request, but I'm ready to help with a real cooking question. 🍳"
+    topic = re.sub(r"[^A-Za-z0-9 '’-]", "", text).strip()
+    if topic and len(topic) <= 60:
+        return f"I can't help with general information about “{topic}.” Ask me about a recipe or ingredients instead. 🍳"
+    return "That request is outside my cooking focus. Ask me about a recipe, ingredient, cooking method, substitution, or food storage instead. 🍳"
+
+
+def is_recipe_recommendation_request(text: str) -> bool:
+    cleaned = normalize(text)
+    if exact_recipe_name_in_message(text) and is_contextual_kitchen_followup(text):
+        return False
+    return bool(recognized_single_ingredient(text)) or looks_like_ingredient_request(text) or any(
+        marker in cleaned
+        for marker in [
+            "what can i make",
+            "what can i cook",
+            "what recipe can i make",
+            "what recipe uses",
+            "what recipe should i try",
+            "recipe ideas",
+            "easiest recipe",
+            "good recipe",
+            "pairs well",
+            "recommend",
+            "suggest",
+            "top 1",
+            "top one",
+            "top 3",
+            "top three",
+            "best recipe",
+            "healthy recipe",
+            "healthy food",
+            "healthier recipe",
+            "healthier food",
+            "low sugar recipe",
+        ]
+    )
+
+
+def is_recipe_detail_request(text: str) -> bool:
+    cleaned = normalize(text)
+    if exact_recipe_name_in_message(text):
+        contextual_markers = ["side dish", "turn out", "pair with", "pairs with"]
+        return not (
+            any(word in cleaned.split() for word in ADVICE_WORDS)
+            or any(marker in cleaned for marker in contextual_markers)
+        )
+    if is_recipe_recommendation_request(text):
+        return False
+    return any(
+        marker in cleaned
+        for marker in [
+            "how to make",
+            "how do i make",
+            "how to cook",
+            "how do i cook",
+            "i want to make",
+            "i want to cook",
+            "recipe for",
+            "instructions for",
+            "prepare",
+        ]
+    ) and not any(word in cleaned.split() for word in ADVICE_WORDS)
+
+
+def is_contextual_kitchen_followup(text: str) -> bool:
+    cleaned = normalize(text)
+    return any(word in cleaned.split() for word in ADVICE_WORDS) or any(
+        phrase in cleaned
+        for phrase in [
+            "this recipe",
+            "that recipe",
+            "for it",
+            "with it",
+            "side dish",
+            "serving size",
+            "make it",
+            "tips for",
+            "turn out",
+            "pair with",
+            "pairs with",
+        ]
+    )
+
+
+def requested_time_limit(text: str) -> int | None:
+    cleaned = normalize(text)
+    minute_match = re.search(r"\b(\d+)\s*(?:min|mins|minute|minutes)\b", cleaned)
+    if minute_match:
+        return max(1, int(minute_match.group(1)))
+    hour_match = re.search(r"\b(\d+)\s*(?:hr|hrs|hour|hours)\b", cleaned)
+    if hour_match:
+        return max(1, int(hour_match.group(1)) * 60)
+    return None
+
+
+def prompt_time_limit(text: str) -> int | None:
+    exact_limit = requested_time_limit(text)
+    if exact_limit is not None:
+        return exact_limit
+    cleaned = normalize(text)
+    if any(marker in cleaned for marker in ["quick", "right now", "tonight"]):
+        return 30
+    return None
+
+
+def needs_pantry_for_request(text: str) -> bool:
+    cleaned = normalize(text)
+    return any(phrase in cleaned for phrase in PANTRY_DEPENDENT_PHRASES)
+
+
+def perishable_pantry_items(pantry: list[str]) -> list[str]:
+    items = [
+        item
+        for item in pantry
+        if any(word in normalize(item).split() for word in PERISHABLE_WORDS)
+    ]
+    return items or pantry
+
+
 def looks_like_ingredient_request(text: str) -> bool:
     """Return True when a message appears to provide pantry ingredients."""
     lowered = text.lower()
@@ -795,7 +1205,7 @@ def looks_like_ingredient_request(text: str) -> bool:
         return False
     return any(
         marker in lowered
-        for marker in [",", " and ", " with ", " using ", "i have ", "ingredients:"]
+        for marker in [",", " and ", " with ", " using ", "i have ", "ingredients:", "built around "]
     )
 
 
@@ -938,36 +1348,459 @@ def compact_item_list(items: list[str], limit: int = 5) -> str:
 
 
 def ranked_recipe_list_reply(recipes: list[dict[str, Any]], limit: int = 3) -> str:
-    """Format three recipe suggestions as a numbered chat list."""
+    """Format recipe suggestions as a bulleted chat list."""
     selected = recipes[:limit]
     blocks: list[str] = []
 
-    for rank, recipe in enumerate(selected, start=1):
+    for recipe in selected:
         matched = compact_item_list(recipe.get("matched", []))
         missing = compact_item_list(recipe.get("missing", []))
+        unused = compact_item_list(recipe.get("unusedPantry", []))
+        unused_line = f"\n  Not used in this recipe: {unused}" if unused != "None" else ""
         blocks.append(
-            f"{rank}. {recipe.get('name')}\n"
-            f"Total time: {recipe.get('totalTime', 'N/A')}\n"
-            f"Uses from your pantry: {matched}\n"
-            f"Still needed: {missing}"
+            f"- {recipe.get('name')}\n"
+            f"  Total time: {recipe.get('totalTime', 'N/A')}\n"
+            f"  Uses from your pantry: {matched}\n"
+            f"  Still needed: {missing}"
+            f"{unused_line}"
         )
 
-    return "\n\n".join(blocks)
+    if len(selected) == 1:
+        return "Here is one recipe you can try: 🍳\n\n" + blocks[0]
+    return f"Here are {len(selected)} recipes you can try: 🍳\n\n" + "\n\n".join(blocks)
 
 
-def format_instruction_text(instruction: Any) -> str:
-    """Change an all-uppercase instruction to normal sentence case."""
-    text = re.sub(r"^\s*\d+[\.\)]\s*", "", str(instruction)).strip()
-    letters = [character for character in text if character.isalpha()]
-    if letters and all(character.isupper() for character in letters):
-        lowered = text.lower()
-        return re.sub(
-            r"[a-z]",
-            lambda match: match.group(0).upper(),
-            lowered,
-            count=1,
+def recipe_search_text(recipe: dict[str, Any]) -> str:
+    return normalize(
+        " ".join(
+            [
+                str(recipe.get("name", "")),
+                str(recipe.get("sourceCategory", "")),
+                *[str(keyword) for keyword in recipe.get("keywords", [])],
+            ]
         )
-    return text
+    )
+
+
+ADDED_SUGAR_MARKERS = {
+    "brown sugar",
+    "corn syrup",
+    "granulated sugar",
+    "honey",
+    "molasses",
+    "powdered sugar",
+    "sugar",
+    "sweetened condensed milk",
+    "white sugar",
+}
+
+RICH_INGREDIENT_MARKERS = {
+    "bacon",
+    "beef",
+    "butter",
+    "corned beef",
+    "cream cheese",
+    "ground beef",
+    "ground pork",
+    "ham",
+    "heavy cream",
+    "hot dog",
+    "lard",
+    "mayonnaise",
+    "pork belly",
+    "pork fat",
+    "pork",
+    "sausage",
+    "shortening",
+}
+
+DESSERT_MARKERS = {
+    "cake",
+    "candy",
+    "cookie",
+    "dessert",
+    "ice cream",
+    "pastry",
+    "pudding",
+}
+
+NUTRIENT_DENSE_MARKERS = {
+    "asparagus",
+    "avocado",
+    "banana",
+    "bean sprouts",
+    "beans",
+    "broccoli",
+    "cabbage",
+    "carrot",
+    "cauliflower",
+    "chicken",
+    "egg",
+    "eggplant",
+    "fish",
+    "green beans",
+    "lentils",
+    "mango",
+    "mushroom",
+    "okra",
+    "pineapple",
+    "salmon",
+    "shrimp",
+    "spinach",
+    "sweet potato",
+    "tofu",
+    "tomato",
+    "tuna",
+    "vegetables",
+}
+
+
+def recipe_calorie_value(recipe: dict[str, Any]) -> float | None:
+    try:
+        value = float(recipe.get("calories", ""))
+        return value if value > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def ingredient_marker_matches(ingredient: str, markers: set[str]) -> bool:
+    cleaned = normalize(ingredient)
+    return any(ingredient_matches_pantry(cleaned, [marker]) for marker in markers)
+
+
+def recipe_health_profile(recipe: dict[str, Any]) -> dict[str, Any]:
+    ingredients = [
+        normalize(ingredient)
+        for ingredient in recipe.get("allIngredients", [])
+        if normalize(ingredient)
+    ]
+    search_text = recipe_search_text(recipe)
+    calories = recipe_calorie_value(recipe)
+    added_sugar = [
+        ingredient
+        for ingredient in ingredients
+        if ingredient_marker_matches(ingredient, ADDED_SUGAR_MARKERS)
+    ]
+    rich_ingredients = [
+        ingredient
+        for ingredient in ingredients
+        if ingredient_marker_matches(ingredient, RICH_INGREDIENT_MARKERS)
+    ]
+    nutrient_dense = [
+        ingredient
+        for ingredient in ingredients
+        if ingredient_marker_matches(ingredient, NUTRIENT_DENSE_MARKERS)
+    ]
+    dessert_style = any(marker in search_text for marker in DESSERT_MARKERS)
+    deep_fried = "deep fried" in search_text or "deep fry" in search_text
+    high_calorie = calories is not None and calories >= 700
+    is_healthier = bool(
+        nutrient_dense
+        and not added_sugar
+        and not rich_ingredients
+        and not dessert_style
+        and not deep_fried
+        and not high_calorie
+    )
+    score = (
+        len(set(nutrient_dense)) * 3
+        - len(set(added_sugar)) * 4
+        - len(set(rich_ingredients)) * 3
+        - (4 if dessert_style else 0)
+        - (4 if deep_fried else 0)
+        - (3 if high_calorie else 0)
+    )
+    return {
+        "classification": "healthier" if is_healthier else "less healthy",
+        "isHealthier": is_healthier,
+        "score": score,
+        "calories": calories,
+        "addedSugar": list(dict.fromkeys(added_sugar)),
+        "richIngredients": list(dict.fromkeys(rich_ingredients)),
+        "nutrientDense": list(dict.fromkeys(nutrient_dense)),
+        "dessertStyle": dessert_style,
+        "deepFried": deep_fried,
+        "highCalorie": high_calorie,
+    }
+
+
+def is_health_request(text: str) -> bool:
+    cleaned = normalize(text)
+    return any(
+        marker in cleaned
+        for marker in [
+            "healthy",
+            "healthier",
+            "unhealthy",
+            "less healthy",
+            "low sugar",
+            "good for me",
+        ]
+    )
+
+
+def is_easy_recipe(recipe: dict[str, Any]) -> bool:
+    text = recipe_search_text(recipe)
+    return "easy" in text or "beginner cook" in text
+
+
+def is_healthy_recipe(recipe: dict[str, Any]) -> bool:
+    return bool(recipe_health_profile(recipe)["isHealthier"])
+
+
+def recipe_health_reply(recipe: dict[str, Any]) -> str:
+    profile = recipe_health_profile(recipe)
+    name = str(recipe.get("name", "This recipe"))
+    calories = profile["calories"]
+    calorie_text = f" Listed calories: {calories:g}." if calories is not None else ""
+    if profile["isHealthier"]:
+        positive = compact_item_list(profile["nutrientDense"], 4)
+        return (
+            f"Based on its listed ingredients, {name} is one of the healthier choices here. "
+            f"It includes {positive} and does not list added sugar or dessert-style ingredients."
+            f"{calorie_text} 🥗"
+        )
+
+    reasons: list[str] = []
+    if profile["addedSugar"]:
+        reasons.append(f"it contains {compact_item_list(profile['addedSugar'], 4)}")
+    if profile["richIngredients"]:
+        reasons.append(f"it contains {compact_item_list(profile['richIngredients'], 4)}")
+    if profile["dessertStyle"]:
+        reasons.append("it is a dessert-style recipe")
+    if profile["deepFried"]:
+        reasons.append("it is listed as deep-fried")
+    if profile["highCalorie"] and calories is not None:
+        reasons.append(f"its listed calories are {calories:g}")
+    if not reasons:
+        reasons.append("its listed ingredients do not provide enough evidence for a healthier classification")
+    reason_text = "; ".join(reasons)
+    if profile["highCalorie"]:
+        calorie_text = ""
+    return (
+        f"Based on its listed ingredients, {name} is classified as a less healthy choice here because {reason_text}. "
+        f"I won't include it when you ask for healthy recipes.{calorie_text} 🍽️"
+    )
+
+
+def is_collection_cuisine_question(text: str) -> bool:
+    cleaned = normalize(text)
+    return "filipino" in cleaned and "recipe" in cleaned and any(
+        marker in cleaned for marker in ["all", "collection", "only", "every"]
+    )
+
+
+def collection_cuisine_reply() -> str:
+    filipino_tagged = sum(
+        1
+        for recipe in RECIPES
+        if any(normalize(keyword) == "filipino" for keyword in recipe.get("keywords", []))
+    )
+    untagged = len(RECIPES) - filipino_tagged
+    return (
+        f"This recipe collection contains {len(RECIPES)} recipes. "
+        f"{filipino_tagged} are explicitly tagged Filipino, while {untagged} do not carry that exact tag. "
+        "Many of the untagged names are still Filipino dishes, but I won't claim that every recipe is explicitly labeled Filipino. "
+        "I will recommend only recipes that are present in this collection. 🍲"
+    )
+
+
+def unsupported_health_question_reply() -> str:
+    return (
+        "I can assess a complete recipe using its listed ingredients and calories, but I won't invent nutrition facts for a single ingredient. "
+        "Ask me, for example, “Is Mais Con Hielo healthy?” or “Suggest a healthy recipe.” 🥗"
+    )
+
+
+def apply_prompt_preferences(
+    recipes: list[dict[str, Any]],
+    text: str,
+) -> list[dict[str, Any]]:
+    cleaned = normalize(text)
+    selected = recipes
+
+    if "tonight" in cleaned:
+        dinner = [recipe for recipe in selected if recipe.get("mealType") == "Dinner"]
+        if dinner:
+            selected = dinner
+
+    if "beginner" in cleaned or "easiest" in cleaned:
+        easy = [recipe for recipe in selected if is_easy_recipe(recipe)]
+        if easy:
+            selected = easy
+
+    if is_health_request(text):
+        selected = [recipe for recipe in selected if is_healthy_recipe(recipe)]
+        selected.sort(
+            key=lambda recipe: (
+                -recipe_health_profile(recipe)["score"],
+                recipe_health_profile(recipe)["calories"] or 9999,
+                recipe.get("timeMinutes", 999),
+                recipe.get("name", ""),
+            )
+        )
+
+    if "fewest ingredient" in cleaned:
+        selected = sorted(
+            selected,
+            key=lambda recipe: (
+                -recipe.get("pantryCoverage", 0),
+                len(recipe.get("allIngredients", [])),
+                recipe.get("timeMinutes", 999),
+                recipe.get("name", ""),
+            ),
+        )
+
+    return selected
+
+
+def recipe_has_long_wait(recipe: dict[str, Any]) -> bool:
+    text = normalize(
+        " ".join(
+            [
+                str(recipe.get("name", "")),
+                *[str(keyword) for keyword in recipe.get("keywords", [])],
+                *[str(step) for step in recipe.get("instructions", [])],
+            ]
+        )
+    )
+    return bool(
+        "overnight" in text
+        or "slow cooker" in text
+        or re.search(r"\b(?:marinate|refrigerate|cure)\b.{0,40}\b\d+\s*(?:hours?|days?)\b", text)
+    )
+
+
+def general_recipe_recommendations(text: str, limit: int) -> list[dict[str, Any]]:
+    cleaned = normalize(text)
+    candidates = list(RECIPES)
+    time_limit = prompt_time_limit(text)
+    if time_limit is not None:
+        timed = [
+            recipe
+            for recipe in candidates
+            if recipe.get("timeMinutes", 999) <= time_limit
+            and not recipe_has_long_wait(recipe)
+        ]
+        if timed:
+            candidates = timed
+
+    candidates = apply_prompt_preferences(candidates, text)
+
+    if "bit different" in cleaned:
+        distinctive = [
+            recipe
+            for recipe in candidates
+            if any(
+                marker in normalize(recipe.get("name", ""))
+                for marker in ["cassava", "guava", "lumpia", "pandan", "sinigang", "turon", "ube"]
+            )
+        ]
+        if distinctive:
+            candidates = distinctive
+
+    if "fewest ingredient" not in cleaned and not is_health_request(text):
+        candidates.sort(
+            key=lambda recipe: (
+                recipe.get("timeMinutes", 999),
+                len(recipe.get("allIngredients", [])),
+                recipe.get("name", ""),
+            )
+        )
+
+    return candidates[:limit]
+
+
+def general_recipe_list_reply(recipes: list[dict[str, Any]]) -> str:
+    blocks = [
+        f"- {recipe.get('name')}\n"
+        f"  Total time: {recipe.get('totalTime', 'N/A')}\n"
+        f"  Main ingredients: {compact_item_list(recipe.get('allIngredients', []))}"
+        for recipe in recipes
+    ]
+    if len(recipes) == 1:
+        return "Here is one recipe you can try: 🍳\n\n" + blocks[0]
+    return f"Here are {len(recipes)} recipes you can try: 🍳\n\n" + "\n\n".join(blocks)
+
+
+def healthy_recipe_list_reply(
+    recipes: list[dict[str, Any]],
+    pantry_based: bool,
+) -> str:
+    blocks: list[str] = []
+    for recipe in recipes:
+        profile = recipe_health_profile(recipe)
+        positive = compact_item_list(profile["nutrientDense"], 4)
+        calorie_text = (
+            f"; listed calories: {profile['calories']:g}"
+            if profile["calories"] is not None
+            else ""
+        )
+        details = [
+            f"- {recipe.get('name')}",
+            f"  Total time: {recipe.get('totalTime', 'N/A')}",
+        ]
+        if pantry_based:
+            details.extend(
+                [
+                    f"  Uses from your pantry: {compact_item_list(recipe.get('matched', []))}",
+                    f"  Still needed: {compact_item_list(recipe.get('missing', []))}",
+                ]
+            )
+        else:
+            details.append(
+                f"  Main ingredients: {compact_item_list(recipe.get('allIngredients', []))}"
+            )
+        details.append(f"  Health basis: {positive}{calorie_text}")
+        blocks.append("\n".join(details))
+
+    intro = "Here is one healthier recipe choice: 🥗" if len(recipes) == 1 else f"Here are {len(recipes)} healthier recipe choices: 🥗"
+    return intro + "\n\n" + "\n\n".join(blocks)
+
+
+def contextual_recipe_fallback(text: str, recipe: dict[str, Any]) -> str:
+    cleaned = normalize(text)
+    name = str(recipe.get("name", "this recipe"))
+    if "substitute" in cleaned or "replace" in cleaned:
+        return f"Which ingredient in {name} would you like to replace? Tell me the ingredient, and I'll suggest a practical substitute. 🍳"
+    if "scale" in cleaned or "serving size" in cleaned:
+        return f"To scale {name}, multiply every ingredient by the same serving-size factor. Keep the cooking method the same, but check doneness as the cooking time may not change proportionally. 🍳"
+    if "side dish" in cleaned or "pair with" in cleaned or "pairs with" in cleaned:
+        return f"A simple rice or vegetable side can pair well with {name}. Tell me which side ingredients you have, and I'll narrow it down. 🍚"
+    if "store" in cleaned or "leftover" in cleaned:
+        return f"For leftovers from {name}, refrigerate them in a covered shallow container within 2 hours. Use refrigerated leftovers within 3 to 4 days and reheat them thoroughly. 🍱"
+    if "tip" in cleaned or "turn out" in cleaned:
+        first_step = next(iter(recipe.get("instructions", [])), "Follow the listed steps in order.")
+        return f"For {name}, prepare every listed ingredient before you start and follow the steps in order. Begin with: {first_step} 🍳"
+    return general_chat_fallback(text)
+
+
+def general_kitchen_advice_fallback(text: str) -> str | None:
+    cleaned = normalize(text)
+    if "herb" in cleaned and ("store" in cleaned or "leftover" in cleaned):
+        return (
+            "For fresh leftover herbs, remove damaged leaves, keep them dry, and wrap them loosely in a slightly damp paper towel. "
+            "Place them in a covered container or resealable bag in the refrigerator and use them while they still smell and look fresh. 🌿"
+        )
+    if ("substitute" in cleaned or "replace" in cleaned) and "butter" in cleaned and "oil" in cleaned:
+        return (
+            "For stovetop cooking, you can usually replace butter with a neutral oil such as canola or vegetable oil. "
+            "Start with about 3/4 as much oil as the butter amount, then adjust if needed. For baking, the texture may change, so tell me the recipe first. 🍳"
+        )
+    if "store" in cleaned or "leftover" in cleaned:
+        return "Tell me which cooked dish or ingredient you want to store, and I'll give you a practical storage answer. 🍱"
+    if "substitute" in cleaned or "replace" in cleaned:
+        return "Tell me which ingredient you want to replace and which recipe you are making, and I'll suggest a suitable substitute. 🍳"
+    return None
+
+
+def general_chat_fallback(user_message: str) -> str:
+    if is_greeting(user_message):
+        return "Hello! What ingredients do you have, or what would you like to cook today? 😊"
+    return (
+        "I want to give you reliable cooking advice, but I can't complete that answer right now. "
+        "Please try again in a moment, or ask me for a recipe using your available ingredients. 🍳"
+    )
 
 
 def recipe_detail_reply(recipe: dict[str, Any]) -> str:
@@ -1060,7 +1893,7 @@ def health() -> dict[str, Any]:
     """Return the real status used by the frontend connection badge."""
     chroma_records = VECTOR_STORE.count()
     ai_health = get_local_ai_health()
-    database_ready = chroma_records == len(RECIPES)
+    database_ready = VECTOR_STORE.is_synced(RECIPES)
     full_rag_ready = bool(
         database_ready
         and ai_health["ollama_ready"]
@@ -1113,14 +1946,41 @@ def chat_with_chef_llama(request: ChatRequest) -> dict[str, Any]:
     user_message = request.user_message.strip()
     history = request.history
     result_count = requested_recipe_count(user_message)
+    pantry = [item.strip() for item in request.pantry if item.strip()]
 
     if not user_message:
         return {"chef_reply": "Please enter a message or a recipe name. 🍳", "recipes": []}
 
-    # Search the database before calling the language model.
-    dish_query = extract_recipe_name_query(user_message)
+    if not is_kitchen_related_message(user_message, pantry):
+        return {"chef_reply": out_of_scope_reply(user_message), "recipes": []}
+
+    normalized_message = normalize(user_message)
+    if is_greeting(user_message):
+        return {"chef_reply": general_chat_fallback(user_message), "recipes": []}
+    if normalized_message in {"thanks", "thank you"}:
+        return {"chef_reply": "You're welcome! Tell me what you would like to cook next. 😊", "recipes": []}
+    if normalized_message in {"bye", "goodbye"}:
+        return {"chef_reply": "Goodbye! I hope your next meal turns out delicious. 🍳", "recipes": []}
+
+    if is_collection_cuisine_question(user_message):
+        return {"chef_reply": collection_cuisine_reply(), "recipes": []}
+
+    exact_health_recipe = exact_recipe_name_in_message(user_message)
+    if is_health_request(user_message):
+        if exact_health_recipe:
+            recipe = next(
+                recipe
+                for recipe in RECIPES
+                if normalize(recipe.get("name", "")) == normalize(exact_health_recipe)
+            )
+            return {"chef_reply": recipe_health_reply(recipe), "recipes": [recipe]}
+        if not is_recipe_recommendation_request(user_message):
+            return {"chef_reply": unsupported_health_question_reply(), "recipes": []}
+
+    dish_request = is_recipe_detail_request(user_message)
+    dish_query = extract_recipe_name_query(user_message) if dish_request else ""
     matched_recipes: list[dict[str, Any]] = []
-    ingredient_request = looks_like_ingredient_request(user_message)
+    ingredient_request = is_recipe_recommendation_request(user_message)
 
     if dish_query:
         matched_recipes = search_recipes_by_name(dish_query)
@@ -1131,16 +1991,82 @@ def chat_with_chef_llama(request: ChatRequest) -> dict[str, Any]:
         ]
         if exact_matches:
             matched_recipes = exact_matches
-    elif ingredient_request:
-        pantry = extract_pantry_from_message(user_message)
-        if pantry:
-            matched_recipes = search_recipe_database(pantry)
-            matched_recipes = [recipe for recipe in matched_recipes if recipe.get("score", 0) > 0]
+        if not matched_recipes:
+            return {"chef_reply": NO_MATCH_REPLY, "recipes": []}
+        selected_recipe = matched_recipes[0]
+        return {
+            "chef_reply": recipe_detail_reply(selected_recipe),
+            "recipes": [selected_recipe],
+        }
 
-    # If no recipes matched for the current query, try looking backwards in history
-    # to maintain context across conversational turns.
-    if not matched_recipes:
+    if ingredient_request:
+        if needs_pantry_for_request(user_message) and not pantry:
+            return {"chef_reply": PANTRY_NEEDED_REPLY, "recipes": []}
+
+        extracted_pantry = (
+            extract_pantry_from_message(user_message)
+            if looks_like_ingredient_request(user_message)
+            else [recognized_single_ingredient(user_message)]
+        )
+        requested_pantry = resolve_pantry_items([*pantry, *extracted_pantry])
+        if requested_pantry:
+            focused_pantry = (
+                perishable_pantry_items(requested_pantry)
+                if "perishable" in normalize(user_message)
+                else requested_pantry
+            )
+            matched_recipes = search_recipe_database(
+                focused_pantry,
+                max_time_minutes=prompt_time_limit(user_message),
+            )
+            matched_recipes = [recipe for recipe in matched_recipes if recipe.get("score", 0) > 0]
+            matched_recipes = apply_prompt_preferences(matched_recipes, user_message)
+            selected_recipes = matched_recipes[:result_count]
+            if not selected_recipes:
+                reply = (
+                    NO_HEALTHY_PANTRY_MATCH_REPLY
+                    if is_health_request(user_message)
+                    else NO_INGREDIENT_MATCH_REPLY
+                )
+                return {"chef_reply": reply, "recipes": []}
+            reply = (
+                healthy_recipe_list_reply(selected_recipes, pantry_based=True)
+                if is_health_request(user_message)
+                else ranked_recipe_list_reply(selected_recipes, result_count)
+            )
+            return {
+                "chef_reply": reply,
+                "recipes": selected_recipes,
+            }
+
+        general_recipes = general_recipe_recommendations(user_message, result_count)
+        if general_recipes:
+            reply = (
+                healthy_recipe_list_reply(general_recipes, pantry_based=False)
+                if is_health_request(user_message)
+                else general_recipe_list_reply(general_recipes)
+            )
+            return {
+                "chef_reply": reply,
+                "recipes": general_recipes,
+            }
+        return {"chef_reply": NO_MATCH_REPLY, "recipes": []}
+
+    if is_contextual_kitchen_followup(user_message):
+        current_dish = exact_recipe_name_in_message(user_message)
+        if current_dish:
+            matched_recipes = search_recipes_by_name(current_dish)
+            exact_matches = [
+                recipe
+                for recipe in matched_recipes
+                if normalize(recipe.get("name", "")) == normalize(current_dish)
+            ]
+            if exact_matches:
+                matched_recipes = exact_matches
+
         for past_msg in reversed(history):
+            if matched_recipes:
+                break
             if past_msg.role == "user":
                 past_dish = extract_recipe_name_query(past_msg.content)
                 if past_dish:
@@ -1163,15 +2089,21 @@ def chat_with_chef_llama(request: ChatRequest) -> dict[str, Any]:
                         if matched_recipes:
                             break
 
-    # The AI synthesizes all chat replies, ensuring a conversational human-like response.
+        if matched_recipes:
+            return {
+                "chef_reply": contextual_recipe_fallback(user_message, matched_recipes[0]),
+                "recipes": matched_recipes[:1],
+            }
+
+        advice_reply = general_kitchen_advice_fallback(user_message)
+        if advice_reply:
+            return {"chef_reply": advice_reply, "recipes": []}
+
     ollama_reply = call_ollama(user_message, matched_recipes, history)
 
-    if not ollama_reply:
-        raise HTTPException(status_code=503, detail="AI engine is offline.")
-
     return {
-        "chef_reply": ollama_reply,
-        "recipes": matched_recipes[:5]
+        "chef_reply": ollama_reply or general_chat_fallback(user_message),
+        "recipes": matched_recipes[:1] if matched_recipes else [],
     }
 
 
@@ -1180,17 +2112,28 @@ def generate_rag_recipe(query: RecipeQuery) -> dict[str, Any]:
     pantry = [item.strip() for item in re.split(r",| and |\+|/|\n", query.user_ingredients) if item.strip()]
     results = search_recipe_database(pantry, max_time_minutes=query.max_time_minutes)
     matched_results = [recipe for recipe in results if recipe.get("score", 0) > 0]
-    reply = call_ollama(
-        query.user_ingredients,
-        matched_results,
-        structured=True,
-    )
-    
-    if not reply:
-        raise HTTPException(status_code=503, detail="AI engine is offline.")
+    if matched_results:
+        reply = call_ollama(
+            query.user_ingredients,
+            matched_results,
+            structured=True,
+        ) or json.dumps(structured_recipe_payload(matched_results[0]), ensure_ascii=False)
+        status = "success"
+    else:
+        reply = json.dumps(
+            {
+                "dish_name": "No matching recipe",
+                "used_ingredients": [],
+                "missing_ingredients": [],
+                "assumed_staples": [],
+                "execution_steps": [NO_INGREDIENT_MATCH_REPLY],
+            },
+            ensure_ascii=False,
+        )
+        status = "no_match"
 
     return {
-        "status": "success",
+        "status": status,
         "backend_process": "LetThemCook_RAG_Dataset_Grounded",
         "chef_reply": reply,
         "results": matched_results[:3],

@@ -75,13 +75,14 @@ export async function getAiRecipe(ingredientsArray) {
 /**
  * Send a message and the previous conversation to the FastAPI backend.
  */
-export async function chatWithChef(userMessage, history = []) {
+export async function chatWithChef(userMessage, history = [], pantry = []) {
   try {
     const data = await requestJson("/api/chat", {
       method: "POST",
       body: JSON.stringify({
         user_message: userMessage,
         history,
+        pantry,
       }),
     });
     return {

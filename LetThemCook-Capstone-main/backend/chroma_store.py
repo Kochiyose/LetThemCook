@@ -47,6 +47,48 @@ class RecipeVectorStore:
     def count(self) -> int:
         return self.collection.count()
 
+    def is_synced(self, recipes: list[dict[str, Any]]) -> bool:
+        if self.count() != len(recipes):
+            return False
+
+        try:
+            stored = self.collection.get(
+                ids=[str(recipe["id"]) for recipe in recipes],
+                include=["documents", "metadatas"],
+            )
+        except Exception:
+            return False
+
+        records = {
+            str(recipe_id): (document, metadata)
+            for recipe_id, document, metadata in zip(
+                stored.get("ids", []),
+                stored.get("documents", []),
+                stored.get("metadatas", []),
+            )
+        }
+        if len(records) != len(recipes):
+            return False
+
+        for recipe in recipes:
+            record = records.get(str(recipe["id"]))
+            if record is None:
+                return False
+            document, metadata = record
+            if document != self.recipe_document(recipe):
+                return False
+            if not metadata or any(
+                [
+                    metadata.get("recipe_id") != int(recipe["id"]),
+                    metadata.get("name") != str(recipe.get("name", "")),
+                    metadata.get("mealType") != str(recipe.get("mealType", "Dinner")),
+                    metadata.get("timeMinutes") != int(recipe.get("timeMinutes", 999)),
+                ]
+            ):
+                return False
+
+        return True
+
     def rebuild(self, recipes: list[dict[str, Any]], batch_size: int = 50) -> int:
         try:
             self.client.delete_collection(self.collection_name)
